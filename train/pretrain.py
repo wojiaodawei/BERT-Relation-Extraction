@@ -8,9 +8,9 @@ from torch import optim as optim
 from torch.nn.utils import clip_grad_norm_
 
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from dataloaders.mtb_data_loader import DataLoader
 from src.misc import load_pickle, save_as_pickle
 from src.model.ALBERT.modeling_albert import AlbertModel
-from src.preprocessing_funcs import DataLoader
 from src.train_funcs import (
     Two_Headed_Loss,
     evaluate_,
