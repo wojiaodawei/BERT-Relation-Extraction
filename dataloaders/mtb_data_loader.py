@@ -1,10 +1,10 @@
 import itertools
 import logging
-import math
 import os
 import re
 
 import joblib
+import neuralcoref
 import numpy as np
 import pandas as pd
 import spacy
@@ -34,7 +34,7 @@ class DataLoader:
         """
         self.config = config
 
-        tokenizer_path = "../data/ALBERT_tokenizer.pkl"
+        tokenizer_path = "data/ALBERT_tokenizer.pkl"
         if os.path.isfile(tokenizer_path):
             with open(tokenizer_path, "rb") as pkl_file:
                 self.tokenizer = joblib.load(pkl_file)
@@ -57,21 +57,15 @@ class DataLoader:
 
         self.cls_token = self.tokenizer.cls_token
         self.sep_token = self.tokenizer.sep_token
-        self.E1_token_id = self.tokenizer.encode("[E1]")[1:-1][0]
-        self.E1s_token_id = self.tokenizer.encode("[/E1]")[1:-1][0]
-        self.E2_token_id = self.tokenizer.encode("[E2]")[1:-1][0]
-        self.E2s_token_id = self.tokenizer.encode("[/E2]")[1:-1][0]
         self.pad_token_id = self.tokenizer.pad_token_id
 
         self.normalizer = Normalizer("en", config.get("normalization", []))
         self.data = self.load_dataset()
         self.train_generator = MTBTrainGenerator(
-            self.data, batch_size=self.config.get("batch_size")
+            dataset=self.data,
+            batch_size=self.config.get("batch_size"),
+            tokenizer=self.tokenizer,
         )
-
-        self.batch_size = config.get("batch_size")
-        self.alpha = 0.7
-        self.mask_probability = 0.15
 
     def load_dataset(self):
         """
@@ -81,8 +75,6 @@ class DataLoader:
         data_file = os.path.basename(data_path)
         data_file_name = os.path.splitext(data_file)[0]
         preprocessed_file = os.path.join("data", data_file_name + ".pkl")
-
-        max_length = self.config.get("max_length", 50000)
 
         if os.path.isfile(preprocessed_file):
             logger.info("Loaded pre-training data from saved file")
@@ -97,26 +89,19 @@ class DataLoader:
             text = self._process_textlines(text)
 
             logger.info("Length of text (characters): {0}".format(len(text)))
-            num_chunks = math.ceil(len(text) / max_length)
-            logger.info(
-                "Splitting into {0} chunks of size {1}".format(
-                    num_chunks, max_length
-                )
-            )
-            text_chunks = (
-                text[i * max_length : (i * max_length + max_length)]
-                for i in range(num_chunks)
-            )
 
             dataset = []
             logger.info("Loading Spacy NLP")
             nlp = spacy.load("en_core_web_lg")
+            neuralcoref.add_to_pipe(nlp)  # Add neural co-reference resolution
+            doc = nlp(text)
+            doc = doc._.coref_resolved
+            sents = list(nlp(doc).sents)
 
-            for text_chunk in tqdm(text_chunks, total=num_chunks):
+            for sent in tqdm(sents):
+                sent_doc = nlp(" ".join([w.text for w in sent]))
                 dataset.extend(
-                    self.create_pretraining_dataset(
-                        text_chunk, nlp, window_size=40
-                    )
+                    self.create_pretraining_dataset(sent_doc, window_size=40)
                 )
 
             logger.info(
@@ -265,74 +250,42 @@ class DataLoader:
             )  # Replace all CAPS with capitalize
             return sent
 
-    def create_pretraining_dataset(
-        self, raw_text: str, nlp, window_size: int = 40
-    ):
+    def create_pretraining_dataset(self, doc, window_size: int = 40):
         """
         Input: Chunk of raw text
         Output: modified corpus of triplets (relation statement, entity1, entity2)
 
         Args:
-            raw_text: Raw text input
-            nlp: spacy NLP model
+            doc: spacy doc containing exactly one sentence
             window_size: Maximum windows size between to entities
         """
-        logger.info("Processing sentences...")
-        sents_doc = nlp(raw_text)
-        ents = sents_doc.ents  # get entities
+        ents = doc.ents  # get entities
 
-        logger.info("Processing relation statements by entities...")
         entities_of_interest = self.config.get("entities_of_interest")
-        length_doc = len(sents_doc)
+        len_doc = len(doc)
         data = []
+        if len_doc > window_size:
+            return data
+
         ents_list = []
-        for e1, e2 in tqdm(itertools.product(ents, ents)):
+        for e1, e2 in itertools.product(ents, ents):
             if e1 == e2:
                 continue
             e1start = e1.start
-            e1end = e1.end
+            e1end = e1.end - 1
             e2start = e2.start
-            e2end = e2.end
+            e2end = e2.end - 1
             e1_has_numbers = re.search("[\d+]", e1.text)
             e2_has_numbers = re.search("[\d+]", e2.text)
             if (e1.label_ not in entities_of_interest) or e1_has_numbers:
                 continue
             if (e2.label_ not in entities_of_interest) or e2_has_numbers:
                 continue
-            if e1.text.lower() == e2.text.lower():  # make sure e1 != e2
+            if e1.text.lower() == e2.text.lower():
                 continue
             # check if next nearest entity within window_size
             if 1 <= (e2start - e1end) <= window_size:
-                # Find start of sentence
-                punc_token = False
-                start = e1start - 1
-                if start > 0:
-                    while not punc_token:
-                        punc_token = sents_doc[start].is_punct
-                        start -= 1
-                        if start < 0:
-                            break
-                    left_r = start + 2 if start > 0 else 0
-                else:
-                    left_r = 0
-
-                # Find end of sentence
-                punc_token = False
-                start = e2end
-                if start < length_doc:
-                    while not punc_token:
-                        punc_token = sents_doc[start].is_punct
-                        start += 1
-                        if start == length_doc:
-                            break
-                    right_r = start if start < length_doc else length_doc
-                else:
-                    right_r = length_doc
-                # sentence should not be longer than window_size
-                if (right_r - left_r) > window_size:
-                    continue
-
-                x = [token.text for token in sents_doc[left_r:right_r]]
+                x = [token.text for token in doc]
 
                 empty_token = all(not token for token in x)
                 emtpy_e1 = not e1.text
@@ -343,23 +296,16 @@ class DataLoader:
 
                 r = (
                     x,
-                    (e1start - left_r, e1end - left_r),
-                    (e2start - left_r, e2end - left_r),
+                    (e1start, e1end),
+                    (e2start, e2end),
                 )
                 data.append((r, e1.text, e2.text))
                 ents_list.append((e1.text, e2.text))
 
-        logger.info(
-            "Processing relation statements by dependency tree parsing..."
-        )
-        doc_sents = list(sents_doc.sents)
-        for sent in tqdm(doc_sents, total=len(doc_sents)):
-            if len(sent) > (window_size + 1):
-                continue
-
-            left_r = sent[0].i
+        if len_doc > (window_size + 1):
+            return data
+        for sent in doc.sents:
             pairs = get_subject_objects(sent)
-
             for pair in pairs:
                 ent1, ent2 = pair[0], pair[1]
 
@@ -376,20 +322,19 @@ class DataLoader:
                 )
                 e1start, e1end = (
                     ent1[0].i if isinstance(ent1, list) else ent1.i,
-                    ent1[-1].i + 1 if isinstance(ent1, list) else ent1.i + 1,
+                    ent1[-1].i if isinstance(ent1, list) else ent1.i,
                 )
                 e2start, e2end = (
                     ent2[0].i if isinstance(ent2, list) else ent2.i,
-                    ent2[-1].i + 1 if isinstance(ent2, list) else ent2.i + 1,
+                    ent2[-1].i if isinstance(ent2, list) else ent2.i,
                 )
                 if (e1end < e2start) and ((e1text, e2text) not in ents_list):
-                    assert e1start != e1end
-                    assert e2start != e2end
-                    assert (e2start - e1end) > 0
+                    if (e2start - e1end) <= 0:
+                        raise ValueError("e2start is smaller than e1end")
                     r = (
                         [w.text for w in sent],
-                        (e1start - left_r, e1end - left_r),
-                        (e2start - left_r, e2end - left_r),
+                        (e1start, e1end),
+                        (e2start, e2end),
                     )
                     data.append((r, e1text, e2text))
                     ents_list.append((e1text, e2text))
