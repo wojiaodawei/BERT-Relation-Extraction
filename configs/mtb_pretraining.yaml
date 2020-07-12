@@ -1,6 +1,5 @@
 # Data
 data: data/cnn-local.txt #pre-training data.txt file path
-max_len: 50000
 entities_of_interest:
   - PERSON
   - NORP
