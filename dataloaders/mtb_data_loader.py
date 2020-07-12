@@ -4,14 +4,12 @@ import os
 import re
 
 import joblib
-import neuralcoref
 import numpy as np
 import pandas as pd
 import spacy
 import torch
 from ml_utils.normalizer import Normalizer
 from torch.nn.utils.rnn import pad_sequence
-from tqdm import tqdm
 from transformers import AlbertTokenizer
 
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
@@ -24,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger("__file__")
 
 
-class DataLoader:
+class MTBPretrainDataLoader:
     def __init__(self, config: dict):
         """
         DataLoader for MTB data.
@@ -82,28 +80,27 @@ class DataLoader:
                 data = joblib.load(pkl_file)
 
         else:
-            logger.info("Loading pre-training data...")
-            with open(data_path, "r", encoding="utf8") as f:
-                text = f.readlines()
-
-            text = self._process_textlines(text)
-
-            logger.info("Length of text (characters): {0}".format(len(text)))
-
             dataset = []
             logger.info("Loading Spacy NLP")
             nlp = spacy.load("en_core_web_lg")
-            neuralcoref.add_to_pipe(nlp)  # Add neural co-reference resolution
-            doc = nlp(text)
-            doc = doc._.coref_resolved
-            sents = list(nlp(doc).sents)
 
-            for sent in tqdm(sents):
-                sent_doc = nlp(" ".join([w.text for w in sent]))
+            logger.info("Loading pre-training data")
+            with open(data_path, "r", encoding="utf8") as f:
+                text = f.readlines()
+
+            while text:
+                current_n_char = 0
+                chunk = []
+                while current_n_char < 100000 and text:
+                    this_text = text.pop()
+                    current_n_char += len(this_text)
+                    chunk += [this_text]
+                chunk = self._process_textlines(chunk)
+
+                doc = nlp(chunk)
                 dataset.extend(
-                    self.create_pretraining_dataset(sent_doc, window_size=40)
+                    self.create_pretraining_dataset(doc, window_size=40)
                 )
-
             logger.info(
                 "Number of relation statements in corpus: {0}".format(
                     len(dataset)
@@ -190,7 +187,7 @@ class DataLoader:
         """
         df["relation_id"] = np.arange(0, len(df))
         logger.info("Generating class pools")
-        return DataLoader.generate_entities_pools(df)
+        return MTBPretrainDataLoader.generate_entities_pools(df)
 
     @classmethod
     def generate_entities_pools(cls, data: pd.DataFrame):
@@ -256,17 +253,14 @@ class DataLoader:
         Output: modified corpus of triplets (relation statement, entity1, entity2)
 
         Args:
-            doc: spacy doc containing exactly one sentence
+            doc: spacy doc
             window_size: Maximum windows size between to entities
         """
         ents = doc.ents  # get entities
 
         entities_of_interest = self.config.get("entities_of_interest")
-        len_doc = len(doc)
+        length_doc = len(doc)
         data = []
-        if len_doc > window_size:
-            return data
-
         ents_list = []
         for e1, e2 in itertools.product(ents, ents):
             if e1 == e2:
@@ -281,11 +275,25 @@ class DataLoader:
                 continue
             if (e2.label_ not in entities_of_interest) or e2_has_numbers:
                 continue
-            if e1.text.lower() == e2.text.lower():
+            if e1.text.lower() == e2.text.lower():  # make sure e1 != e2
                 continue
             # check if next nearest entity within window_size
             if 1 <= (e2start - e1end) <= window_size:
-                x = [token.text for token in doc]
+                # Find start of sentence
+                left_r = MTBPretrainDataLoader._find_end_of_sentence(
+                    doc, e1start
+                )
+
+                # Find end of sentence
+                right_r = MTBPretrainDataLoader._find_start_of_sentence(
+                    doc, e2end, length_doc
+                )
+
+                # sentence should not be longer than window_size
+                if (right_r - left_r) > window_size:
+                    continue
+
+                x = [token.text for token in doc[left_r:right_r]]
 
                 empty_token = all(not token for token in x)
                 emtpy_e1 = not e1.text
@@ -296,16 +304,20 @@ class DataLoader:
 
                 r = (
                     x,
-                    (e1start, e1end),
-                    (e2start, e2end),
+                    (e1start - left_r, e1end - left_r),
+                    (e2start - left_r, e2end - left_r),
                 )
                 data.append((r, e1.text, e2.text))
                 ents_list.append((e1.text, e2.text))
 
-        if len_doc > (window_size + 1):
-            return data
-        for sent in doc.sents:
+        doc_sents = list(doc.sents)
+        for sent in doc_sents:
+            if len(sent) > (window_size + 1):
+                continue
+
+            left_r = sent[0].i
             pairs = get_subject_objects(sent)
+
             for pair in pairs:
                 ent1, ent2 = pair[0], pair[1]
 
@@ -322,20 +334,50 @@ class DataLoader:
                 )
                 e1start, e1end = (
                     ent1[0].i if isinstance(ent1, list) else ent1.i,
-                    ent1[-1].i if isinstance(ent1, list) else ent1.i,
+                    ent1[-1].i + 1 if isinstance(ent1, list) else ent1.i + 1,
                 )
                 e2start, e2end = (
                     ent2[0].i if isinstance(ent2, list) else ent2.i,
-                    ent2[-1].i if isinstance(ent2, list) else ent2.i,
+                    ent2[-1].i + 1 if isinstance(ent2, list) else ent2.i + 1,
                 )
                 if (e1end < e2start) and ((e1text, e2text) not in ents_list):
                     if (e2start - e1end) <= 0:
                         raise ValueError("e2start is smaller than e1end")
                     r = (
                         [w.text for w in sent],
-                        (e1start, e1end),
-                        (e2start, e2end),
+                        (e1start - left_r, e1end - left_r),
+                        (e2start - left_r, e2end - left_r),
                     )
                     data.append((r, e1text, e2text))
                     ents_list.append((e1text, e2text))
         return data
+
+    @classmethod
+    def _find_end_of_sentence(cls, doc, e1start):
+        punc_token = False
+        start = e1start - 1
+        if start > 0:
+            while not punc_token:
+                punc_token = doc[start].is_punct
+                start -= 1
+                if start < 0:
+                    break
+            left_r = start + 2 if start > 0 else 0
+        else:
+            left_r = 0
+        return left_r
+
+    @classmethod
+    def _find_start_of_sentence(cls, doc, e2end, length_doc):
+        punc_token = False
+        start = e2end
+        if start < length_doc:
+            while not punc_token:
+                punc_token = doc[start].is_punct
+                start += 1
+                if start == length_doc:
+                    break
+            right_r = start if start < length_doc else length_doc
+        else:
+            right_r = length_doc
+        return right_r
