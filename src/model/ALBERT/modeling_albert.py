@@ -5,6 +5,7 @@ import os
 import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss
+from transformers import AlbertConfig
 
 from src.model.ALBERT.albert_utils import (
     ACT2FN,
@@ -13,7 +14,6 @@ from src.model.ALBERT.albert_utils import (
     prune_linear_layer,
 )
 
-from .configuration_albert import AlbertConfig
 from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
 from .modeling_utils import PreTrainedModel
 
@@ -35,21 +35,22 @@ ALBERT_PRETRAINED_MODEL_ARCHIVE_MAP = {
 
 def load_tf_weights_in_albert(model, config, tf_checkpoint_path):
     """
-    Load tf checkpoints in a pytorch model.
+    Load tf checkpoints in a pytorch models.
     """
     try:
         import re
+
         import numpy as np
         import tensorflow as tf
     except ImportError:
         logger.error(
-            "Loading a TensorFlow model in PyTorch, requires TensorFlow to be installed. Please see "
+            "Loading a TensorFlow models in PyTorch, requires TensorFlow to be installed. Please see "
             "https://www.tensorflow.org/install/ for installation instructions."
         )
         raise
     tf_path = os.path.abspath(tf_checkpoint_path)
     logger.info("Converting TensorFlow checkpoint from {}".format(tf_path))
-    # Load weights from TF model
+    # Load weights from TF models
     init_vars = tf.train.list_variables(tf_path)
     names = []
     arrays = []
@@ -103,7 +104,7 @@ def load_tf_weights_in_albert(model, config, tf_checkpoint_path):
         ):
             name = "classifier/" + name
 
-        # No ALBERT model currently handles the next sentence prediction task
+        # No ALBERT models currently handles the next sentence prediction task
         if "seq_relationship" in name:
             continue
 
@@ -439,14 +440,14 @@ class AlbertPreTrainedModel(PreTrainedModel):
 
 ALBERT_START_DOCSTRING = r"""
 
-    This model is a PyTorch `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`_ sub-class.
+    This models is a PyTorch `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`_ sub-class.
     Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to general
     usage and behavior.
 
     Args:
-        config (:class:`~transformers.AlbertConfig`): Model configuration class with all the parameters of the model.
-            Initializing with a config file does not load the weights associated with the model, only the configuration.
-            Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model weights.
+        config (:class:`~transformers.AlbertConfig`): Model configuration class with all the parameters of the models.
+            Initializing with a config file does not load the weights associated with the models, only the configuration.
+            Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the models weights.
 """
 
 ALBERT_INPUTS_DOCSTRING = r"""
@@ -483,7 +484,7 @@ ALBERT_INPUTS_DOCSTRING = r"""
         input_embeds (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`, defaults to :obj:`None`):
             Optionally, instead of passing :obj:`input_ids` you can choose to directly pass an embedded representation.
             This is useful if you want more control over how to convert `input_ids` indices into associated vectors
-            than the model's internal embedding lookup matrix.
+            than the models's internal embedding lookup matrix.
 """
 
 
@@ -542,10 +543,10 @@ class AlbertModel(AlbertPreTrainedModel):
         return self.embeddings.word_embeddings
 
     def _prune_heads(self, heads_to_prune):
-        """ Prunes heads of the model.
+        """ Prunes heads of the models.
             heads_to_prune: dict of {layer_num: list of heads to prune in this layer}
             ALBERT has a different architecture in that its layers are shared across groups, which then has inner groups.
-            If an ALBERT model has 12 hidden layers and 2 hidden groups, with two inner groups, there
+            If an ALBERT models has 12 hidden layers and 2 hidden groups, with two inner groups, there
             is a total of 4 different layers.
 
             These layers are flattened: the indices [0,1] correspond to the two inner groups of the first hidden layer,
@@ -579,7 +580,7 @@ class AlbertModel(AlbertPreTrainedModel):
     Return:
         :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.AlbertConfig`) and inputs:
         last_hidden_state (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`):
-            Sequence of hidden-states at the output of the last layer of the model.
+            Sequence of hidden-states at the output of the last layer of the models.
         pooler_output (:obj:`torch.FloatTensor`: of shape :obj:`(batch_size, hidden_size)`):
             Last layer hidden-state of the first token of the sequence (classification token)
             further processed by a Linear layer and a Tanh activation function. The Linear
@@ -593,7 +594,7 @@ class AlbertModel(AlbertPreTrainedModel):
             Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
             of shape :obj:`(batch_size, sequence_length, hidden_size)`.
 
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+            Hidden-states of the models at the output of each layer plus the initial embedding outputs.
         attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``config.output_attentions=True``):
             Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
             :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
@@ -607,9 +608,9 @@ class AlbertModel(AlbertPreTrainedModel):
         import torch
 
         tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-        model = AlbertModel.from_pretrained('albert-base-v2')
+        models = AlbertModel.from_pretrained('albert-base-v2')
         input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-        outputs = model(input_ids)
+        outputs = models(input_ids)
         last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
 
         """
@@ -784,7 +785,7 @@ class AlbertForMaskedLM(AlbertPreTrainedModel):
             Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
             of shape :obj:`(batch_size, sequence_length, hidden_size)`.
 
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+            Hidden-states of the models at the output of each layer plus the initial embedding outputs.
         attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``config.output_attentions=True``):
             Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
             :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
@@ -798,9 +799,9 @@ class AlbertForMaskedLM(AlbertPreTrainedModel):
         import torch
 
         tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-        model = AlbertForMaskedLM.from_pretrained('albert-base-v2')
+        models = AlbertForMaskedLM.from_pretrained('albert-base-v2')
         input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-        outputs = model(input_ids, masked_lm_labels=input_ids)
+        outputs = models(input_ids, masked_lm_labels=input_ids)
         loss, prediction_scores = outputs[:2]
 
         """
@@ -874,7 +875,7 @@ class AlbertForSequenceClassification(AlbertPreTrainedModel):
             Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
             of shape :obj:`(batch_size, sequence_length, hidden_size)`.
 
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+            Hidden-states of the models at the output of each layer plus the initial embedding outputs.
         attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``config.output_attentions=True``):
             Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
             :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
@@ -888,10 +889,10 @@ class AlbertForSequenceClassification(AlbertPreTrainedModel):
             import torch
 
             tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-            model = AlbertForSequenceClassification.from_pretrained('albert-base-v2')
+            models = AlbertForSequenceClassification.from_pretrained('albert-base-v2')
             input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
             labels = torch.tensor([1]).unsqueeze(0)  # Batch size 1
-            outputs = model(input_ids, labels=labels)
+            outputs = models(input_ids, labels=labels)
             loss, logits = outputs[:2]
 
         """
@@ -978,7 +979,7 @@ class AlbertForQuestionAnswering(AlbertPreTrainedModel):
             Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
             of shape :obj:`(batch_size, sequence_length, hidden_size)`.
 
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+            Hidden-states of the models at the output of each layer plus the initial embedding outputs.
         attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``config.output_attentions=True``):
             Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
             :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
@@ -989,16 +990,16 @@ class AlbertForQuestionAnswering(AlbertPreTrainedModel):
     Examples::
 
         # The checkpoint albert-base-v2 is not fine-tuned for question answering. Please see the
-        # examples/run_squad.py example to see how to fine-tune a model to a question answering task.
+        # examples/run_squad.py example to see how to fine-tune a models to a question answering task.
 
         from transformers import AlbertTokenizer, AlbertForQuestionAnswering
         import torch
 
         tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-        model = AlbertForQuestionAnswering.from_pretrained('albert-base-v2')
+        models = AlbertForQuestionAnswering.from_pretrained('albert-base-v2')
         question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
         input_dict = tokenizer.encode_plus(question, text, return_tensors='pt')
-        start_scores, end_scores = model(**input_dict)
+        start_scores, end_scores = models(**input_dict)
 
         """
 
@@ -1025,7 +1026,7 @@ class AlbertForQuestionAnswering(AlbertPreTrainedModel):
                 start_positions = start_positions.squeeze(-1)
             if len(end_positions.size()) > 1:
                 end_positions = end_positions.squeeze(-1)
-            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            # sometimes the start/end positions are outside our models inputs, we ignore these terms
             ignored_index = start_logits.size(1)
             start_positions.clamp_(0, ignored_index)
             end_positions.clamp_(0, ignored_index)

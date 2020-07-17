@@ -18,7 +18,7 @@ class MTBTrainGenerator(Dataset):
         self, dataset, tokenizer, batch_size=None,
     ):
         """
-        Data Generator for Matching the blanks model.
+        Data Generator for Matching the blanks models.
 
         Args:
             dataset: Dataset containing information about the relations and the position of the entities
@@ -50,8 +50,14 @@ class MTBTrainGenerator(Dataset):
         self.cls_idx = self.tokenizer.cls_token_id
         self.sep_idx = self.tokenizer.sep_token_id
 
+    def __iter__(self):
+        """
+        Create a generator that iterate over the Sequence.
+        """
+        yield from (item for item in (self[i] for i in range(len(self))))
+
     def __len__(self):
-        return len(self.data["tokenized_relations"])
+        return int(len(self.data["tokenized_relations"]) - 1)
 
     def _put_blanks(self, data):
         alpha = 0.7

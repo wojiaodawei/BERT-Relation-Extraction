@@ -6,7 +6,7 @@ from src.tasks.infer import FewRel, infer_from_trained
 from src.tasks.trainer import train_and_fit
 
 """
-This fine-tunes the BERT model on SemEval, FewRel tasks
+This fine-tunes the BERT models on SemEval, FewRel tasks
 """
 
 logging.basicConfig(
@@ -35,7 +35,7 @@ if __name__ == "__main__":
         "--use_pretrained_blanks",
         type=int,
         default=0,
-        help="0: Don't use pre-trained blanks model, 1: use pre-trained blanks model",
+        help="0: Don't use pre-trained blanks models, 1: use pre-trained blanks models",
     )
     parser.add_argument(
         "--num_classes",
