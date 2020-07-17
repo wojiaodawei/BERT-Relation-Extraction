@@ -16,9 +16,12 @@ normalization:
   - lowercase
   - html
   - urls
+# Model
+transformer: albert-large-v2
 # Training
 batch_size: 32 # Training batch size
 gradient_acc_steps: 2 # steps of gradient accumulation
 max_norm: 1.0 # Clipped gradient norm
 epochs: 18 # Number of Epochs
 lr: 0.0001 # learning rate
+resume: True

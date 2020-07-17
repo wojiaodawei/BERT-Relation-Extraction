@@ -43,7 +43,7 @@ if [ -z "$pythonfiles" ]
 then
   echo "No changes in pythonfiles"
 else
-  pip install -q autoflake docformatter black
+  pip install -q -U autoflake docformatter black
   autoflake -i --expand-star-imports --remove-all-unused-imports --ignore-init-module-imports --remove-duplicate-keys --remove-unused-variables $pythonfiles
   docformatter -i --make-summary-multi-line --pre-summary-newline  $pythonfiles
   isort $pythonfiles
@@ -60,7 +60,7 @@ if [ -z "$pythonfiles" ]
 then
   echo "No changes in pythonfiles"
 else
-  pip install -q wemake-python-styleguide
+  pip install -q wemake-python-styleguide -U
   wget "https://raw.githubusercontent.com/ebot7/eb7-styleguide/master/settings/setup_ml_githooks.cfg"
   echo $pythonfiles
   flake8 $pythonfiles --config=setup_ml_githooks.cfg

@@ -13,7 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Configuration base class and utilities."""
+"""
+Configuration base class and utilities.
+"""
 
 
 import copy
@@ -24,7 +26,6 @@ from typing import Dict, Optional, Tuple
 
 from .file_utils import CONFIG_NAME, cached_path, hf_bucket_url, is_remote_url
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,24 +34,24 @@ class PretrainedConfig(object):
         Handles a few parameters common to all models' configurations as well as methods for loading/downloading/saving configurations.
 
         Note:
-            A configuration file can be loaded and saved to disk. Loading the configuration file and using this file to initialize a model does **not** load the model weights.
-            It only affects the model's configuration.
+            A configuration file can be loaded and saved to disk. Loading the configuration file and using this file to initialize a models does **not** load the models weights.
+            It only affects the models's configuration.
 
         Class attributes (overridden by derived classes):
-            - ``pretrained_config_archive_map``: a python ``dict`` with `shortcut names` (string) as keys and `url` (string) of associated pretrained model configurations as values.
-            - ``model_type``: a string that identifies the model type, that we serialize into the JSON file, and that we use to recreate the correct object in :class:`~transformers.AutoConfig`.
+            - ``pretrained_config_archive_map``: a python ``dict`` with `shortcut names` (string) as keys and `url` (string) of associated pretrained models configurations as values.
+            - ``model_type``: a string that identifies the models type, that we serialize into the JSON file, and that we use to recreate the correct object in :class:`~transformers.AutoConfig`.
 
         Args:
             finetuning_task (:obj:`string` or :obj:`None`, `optional`, defaults to :obj:`None`):
-                Name of the task used to fine-tune the model. This can be used when converting from an original (TensorFlow or PyTorch) checkpoint.
+                Name of the task used to fine-tune the models. This can be used when converting from an original (TensorFlow or PyTorch) checkpoint.
             num_labels (:obj:`int`, `optional`, defaults to `2`):
-                Number of classes to use when the model is a classification model (sequences/tokens)
+                Number of classes to use when the models is a classification models (sequences/tokens)
             output_attentions (:obj:`bool`, `optional`, defaults to :obj:`False`):
-                Should the model returns attentions weights.
+                Should the models returns attentions weights.
             output_hidden_states (:obj:`string`, `optional`, defaults to :obj:`False`):
-                Should the model returns all hidden-states.
+                Should the models returns all hidden-states.
             torchscript (:obj:`bool`, `optional`, defaults to :obj:`False`):
-                Is the model used with Torchscript (for PyTorch models).
+                Is the models used with Torchscript (for PyTorch models).
     """
     pretrained_config_archive_map = {}  # type: Dict[str, str]
     model_type = ""  # type: str
@@ -59,8 +60,12 @@ class PretrainedConfig(object):
         # Attributes with defaults
         self.output_attentions = kwargs.pop("output_attentions", False)
         self.output_hidden_states = kwargs.pop("output_hidden_states", False)
-        self.output_past = kwargs.pop("output_past", True)  # Not used by all models
-        self.torchscript = kwargs.pop("torchscript", False)  # Only used by PyTorch models
+        self.output_past = kwargs.pop(
+            "output_past", True
+        )  # Not used by all models
+        self.torchscript = kwargs.pop(
+            "torchscript", False
+        )  # Only used by PyTorch models
         self.use_bfloat16 = kwargs.pop("use_bfloat16", False)
         self.pruned_heads = kwargs.pop("pruned_heads", {})
 
@@ -85,23 +90,37 @@ class PretrainedConfig(object):
         self.architectures = kwargs.pop("architectures", None)
         self.finetuning_task = kwargs.pop("finetuning_task", None)
         self.num_labels = kwargs.pop("num_labels", 2)
-        self.id2label = kwargs.pop("id2label", {i: "LABEL_{}".format(i) for i in range(self.num_labels)})
-        self.id2label = dict((int(key), value) for key, value in self.id2label.items())
-        self.label2id = kwargs.pop("label2id", dict(zip(self.id2label.values(), self.id2label.keys())))
-        self.label2id = dict((key, int(value)) for key, value in self.label2id.items())
+        self.id2label = kwargs.pop(
+            "id2label",
+            {i: "LABEL_{}".format(i) for i in range(self.num_labels)},
+        )
+        self.id2label = dict(
+            (int(key), value) for key, value in self.id2label.items()
+        )
+        self.label2id = kwargs.pop(
+            "label2id", dict(zip(self.id2label.values(), self.id2label.keys()))
+        )
+        self.label2id = dict(
+            (key, int(value)) for key, value in self.label2id.items()
+        )
 
         # Additional attributes without default values
         for key, value in kwargs.items():
             try:
                 setattr(self, key, value)
             except AttributeError as err:
-                logger.error("Can't set {} with value {} for {}".format(key, value, self))
+                logger.error(
+                    "Can't set {} with value {} for {}".format(
+                        key, value, self
+                    )
+                )
                 raise err
 
     def save_pretrained(self, save_directory):
         """
-        Save a configuration object to the directory `save_directory`, so that it
-        can be re-loaded using the :func:`~transformers.PretrainedConfig.from_pretrained` class method.
+        Save a configuration object to the directory `save_directory`, so that
+        it can be re-loaded using the
+        :func:`~transformers.PretrainedConfig.from_pretrained` class method.
 
         Args:
             save_directory (:obj:`string`):
@@ -109,7 +128,7 @@ class PretrainedConfig(object):
         """
         assert os.path.isdir(
             save_directory
-        ), "Saving path should be a directory where the model and configuration can be saved"
+        ), "Saving path should be a directory where the models and configuration can be saved"
 
         # If we save using the predefined names, we can load using `from_pretrained`
         output_config_file = os.path.join(save_directory, CONFIG_NAME)
@@ -118,31 +137,33 @@ class PretrainedConfig(object):
         logger.info("Configuration saved in {}".format(output_config_file))
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs) -> "PretrainedConfig":
+    def from_pretrained(
+        cls, pretrained_model_name_or_path, **kwargs
+    ) -> "PretrainedConfig":
         r"""
 
-        Instantiate a :class:`~transformers.PretrainedConfig` (or a derived class) from a pre-trained model configuration.
+        Instantiate a :class:`~transformers.PretrainedConfig` (or a derived class) from a pre-trained models configuration.
 
         Args:
             pretrained_model_name_or_path (:obj:`string`):
                 either:
-                  - a string with the `shortcut name` of a pre-trained model configuration to load from cache or
+                  - a string with the `shortcut name` of a pre-trained models configuration to load from cache or
                     download, e.g.: ``bert-base-uncased``.
-                  - a string with the `identifier name` of a pre-trained model configuration that was user-uploaded to
+                  - a string with the `identifier name` of a pre-trained models configuration that was user-uploaded to
                     our S3, e.g.: ``dbmdz/bert-base-german-cased``.
                   - a path to a `directory` containing a configuration file saved using the
                     :func:`~transformers.PretrainedConfig.save_pretrained` method, e.g.: ``./my_model_directory/``.
                   - a path or url to a saved configuration JSON `file`, e.g.:
                     ``./my_model_directory/configuration.json``.
             cache_dir (:obj:`string`, `optional`):
-                Path to a directory in which a downloaded pre-trained model
+                Path to a directory in which a downloaded pre-trained models
                 configuration should be cached if the standard cache should not be used.
             kwargs (:obj:`Dict[str, any]`, `optional`):
                 The values in kwargs of any keys which are configuration attributes will be used to override the loaded
                 values. Behavior concerning key/value pairs whose keys are *not* configuration attributes is
                 controlled by the `return_unused_kwargs` keyword parameter.
             force_download (:obj:`bool`, `optional`, defaults to :obj:`False`):
-                Force to (re-)download the model weights and configuration files and override the cached versions if they exist.
+                Force to (re-)download the models weights and configuration files and override the cached versions if they exist.
             resume_download (:obj:`bool`, `optional`, defaults to :obj:`False`):
                 Do not delete incompletely recieved file. Attempt to resume the download if such a file exists.
             proxies (:obj:`Dict`, `optional`):
@@ -163,7 +184,7 @@ class PretrainedConfig(object):
             # We can't instantiate directly the base class `PretrainedConfig` so let's show the examples on a
             # derived class: BertConfig
             config = BertConfig.from_pretrained('bert-base-uncased')    # Download configuration from S3 and cache.
-            config = BertConfig.from_pretrained('./test/saved_model/')  # E.g. config (or model) was saved using `save_pretrained('./test/saved_model/')`
+            config = BertConfig.from_pretrained('./test/saved_model/')  # E.g. config (or models) was saved using `save_pretrained('./test/saved_model/')`
             config = BertConfig.from_pretrained('./test/saved_model/my_configuration.json')
             config = BertConfig.from_pretrained('bert-base-uncased', output_attention=True, foo=False)
             assert config.output_attention == True
@@ -173,16 +194,21 @@ class PretrainedConfig(object):
             assert unused_kwargs == {'foo': False}
 
         """
-        config_dict, kwargs = cls.get_config_dict(pretrained_model_name_or_path, **kwargs)
+        config_dict, kwargs = cls.get_config_dict(
+            pretrained_model_name_or_path, **kwargs
+        )
         return cls.from_dict(config_dict, **kwargs)
 
     @classmethod
     def get_config_dict(
-        cls, pretrained_model_name_or_path: str, pretrained_config_archive_map: Optional[Dict] = None, **kwargs
+        cls,
+        pretrained_model_name_or_path: str,
+        pretrained_config_archive_map: Optional[Dict] = None,
+        **kwargs
     ) -> Tuple[Dict, Dict]:
         """
-        From a `pretrained_model_name_or_path`, resolve to a dictionary of parameters, to be used
-        for instantiating a Config using `from_dict`.
+        From a `pretrained_model_name_or_path`, resolve to a dictionary of
+        parameters, to be used for instantiating a Config using `from_dict`.
 
         Parameters:
             pretrained_model_name_or_path (:obj:`string`):
@@ -192,7 +218,6 @@ class PretrainedConfig(object):
 
         Returns:
             :obj:`Tuple[Dict, Dict]`: The dictionary that will be used to instantiate the configuration object.
-
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -203,13 +228,21 @@ class PretrainedConfig(object):
             pretrained_config_archive_map = cls.pretrained_config_archive_map
 
         if pretrained_model_name_or_path in pretrained_config_archive_map:
-            config_file = pretrained_config_archive_map[pretrained_model_name_or_path]
+            config_file = pretrained_config_archive_map[
+                pretrained_model_name_or_path
+            ]
         elif os.path.isdir(pretrained_model_name_or_path):
-            config_file = os.path.join(pretrained_model_name_or_path, CONFIG_NAME)
-        elif os.path.isfile(pretrained_model_name_or_path) or is_remote_url(pretrained_model_name_or_path):
+            config_file = os.path.join(
+                pretrained_model_name_or_path, CONFIG_NAME
+            )
+        elif os.path.isfile(pretrained_model_name_or_path) or is_remote_url(
+            pretrained_model_name_or_path
+        ):
             config_file = pretrained_model_name_or_path
         else:
-            config_file = hf_bucket_url(pretrained_model_name_or_path, postfix=CONFIG_NAME)
+            config_file = hf_bucket_url(
+                pretrained_model_name_or_path, postfix=CONFIG_NAME
+            )
 
         try:
             # Load from URL or cache if already cached
@@ -227,15 +260,17 @@ class PretrainedConfig(object):
 
         except EnvironmentError:
             if pretrained_model_name_or_path in pretrained_config_archive_map:
-                msg = "Couldn't reach server at '{}' to download pretrained model configuration file.".format(
+                msg = "Couldn't reach server at '{}' to download pretrained models configuration file.".format(
                     config_file
                 )
             else:
                 msg = (
-                    "Model name '{}' was not found in model name list. "
-                    "We assumed '{}' was a path, a model identifier, or url to a configuration file named {} or "
+                    "Model name '{}' was not found in models name list. "
+                    "We assumed '{}' was a path, a models identifier, or url to a configuration file named {} or "
                     "a directory containing such a file but couldn't find any such file at this path or url.".format(
-                        pretrained_model_name_or_path, config_file, CONFIG_NAME,
+                        pretrained_model_name_or_path,
+                        config_file,
+                        CONFIG_NAME,
                     )
                 )
             raise EnvironmentError(msg)
@@ -244,14 +279,20 @@ class PretrainedConfig(object):
             msg = (
                 "Couldn't reach server at '{}' to download configuration file or "
                 "configuration file is not a valid JSON file. "
-                "Please check network or file content here: {}.".format(config_file, resolved_config_file)
+                "Please check network or file content here: {}.".format(
+                    config_file, resolved_config_file
+                )
             )
             raise EnvironmentError(msg)
 
         if resolved_config_file == config_file:
             logger.info("loading configuration file {}".format(config_file))
         else:
-            logger.info("loading configuration file {} from cache at {}".format(config_file, resolved_config_file))
+            logger.info(
+                "loading configuration file {} from cache at {}".format(
+                    config_file, resolved_config_file
+                )
+            )
 
         return config_dict, kwargs
 
@@ -276,7 +317,9 @@ class PretrainedConfig(object):
         config = cls(**config_dict)
 
         if hasattr(config, "pruned_heads"):
-            config.pruned_heads = dict((int(key), value) for key, value in config.pruned_heads.items())
+            config.pruned_heads = dict(
+                (int(key), value) for key, value in config.pruned_heads.items()
+            )
 
         # Update config with kwargs if needed
         to_remove = []
@@ -304,7 +347,6 @@ class PretrainedConfig(object):
 
         Returns:
             :class:`PretrainedConfig`: An instance of a configuration object
-
         """
         config_dict = cls._dict_from_json_file(json_file)
         return cls(**config_dict)

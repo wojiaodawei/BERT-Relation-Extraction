@@ -1,7 +1,8 @@
 """
 Utilities for working with the local dataset cache.
-This file is adapted from the AllenNLP library at https://github.com/allenai/allennlp
-Copyright by the AllenNLP authors.
+
+This file is adapted from the AllenNLP library at
+https://github.com/allenai/allennlp Copyright by the AllenNLP authors.
 """
 
 import fnmatch
@@ -25,13 +26,16 @@ from tqdm.auto import tqdm
 
 from . import __version__
 
-
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 try:
     USE_TF = os.environ.get("USE_TF", "AUTO").upper()
     USE_TORCH = os.environ.get("USE_TORCH", "AUTO").upper()
-    if USE_TORCH in ("1", "ON", "YES", "AUTO") and USE_TF not in ("1", "ON", "YES"):
+    if USE_TORCH in ("1", "ON", "YES", "AUTO") and USE_TF not in (
+        "1",
+        "ON",
+        "YES",
+    ):
         import torch
 
         _torch_available = True  # pylint: disable=invalid-name
@@ -46,7 +50,11 @@ try:
     USE_TF = os.environ.get("USE_TF", "AUTO").upper()
     USE_TORCH = os.environ.get("USE_TORCH", "AUTO").upper()
 
-    if USE_TF in ("1", "ON", "YES", "AUTO") and USE_TORCH not in ("1", "ON", "YES"):
+    if USE_TF in ("1", "ON", "YES", "AUTO") and USE_TORCH not in (
+        "1",
+        "ON",
+        "YES",
+    ):
         import tensorflow as tf
 
         assert hasattr(tf, "__version__") and int(tf.__version__[0]) >= 2
@@ -64,7 +72,10 @@ try:
     torch_cache_home = _get_torch_home()
 except ImportError:
     torch_cache_home = os.path.expanduser(
-        os.getenv("TORCH_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "torch"))
+        os.getenv(
+            "TORCH_HOME",
+            os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "torch"),
+        )
     )
 default_cache_path = os.path.join(torch_cache_home, "transformers")
 
@@ -72,19 +83,27 @@ try:
     from pathlib import Path
 
     PYTORCH_PRETRAINED_BERT_CACHE = Path(
-        os.getenv("PYTORCH_TRANSFORMERS_CACHE", os.getenv("PYTORCH_PRETRAINED_BERT_CACHE", default_cache_path))
+        os.getenv(
+            "PYTORCH_TRANSFORMERS_CACHE",
+            os.getenv("PYTORCH_PRETRAINED_BERT_CACHE", default_cache_path),
+        )
     )
 except (AttributeError, ImportError):
     PYTORCH_PRETRAINED_BERT_CACHE = os.getenv(
-        "PYTORCH_TRANSFORMERS_CACHE", os.getenv("PYTORCH_PRETRAINED_BERT_CACHE", default_cache_path)
+        "PYTORCH_TRANSFORMERS_CACHE",
+        os.getenv("PYTORCH_PRETRAINED_BERT_CACHE", default_cache_path),
     )
 
-PYTORCH_TRANSFORMERS_CACHE = PYTORCH_PRETRAINED_BERT_CACHE  # Kept for backward compatibility
-TRANSFORMERS_CACHE = PYTORCH_PRETRAINED_BERT_CACHE  # Kept for backward compatibility
+PYTORCH_TRANSFORMERS_CACHE = (
+    PYTORCH_PRETRAINED_BERT_CACHE  # Kept for backward compatibility
+)
+TRANSFORMERS_CACHE = (
+    PYTORCH_PRETRAINED_BERT_CACHE  # Kept for backward compatibility
+)
 
 WEIGHTS_NAME = "pytorch_model.bin"
 TF2_WEIGHTS_NAME = "tf_model.h5"
-TF_WEIGHTS_NAME = "model.ckpt"
+TF_WEIGHTS_NAME = "models.ckpt"
 CONFIG_NAME = "config.json"
 MODEL_CARD_NAME = "modelcard.json"
 
@@ -107,7 +126,9 @@ def is_tf_available():
 
 def add_start_docstrings(*docstr):
     def docstring_decorator(fn):
-        fn.__doc__ = "".join(docstr) + (fn.__doc__ if fn.__doc__ is not None else "")
+        fn.__doc__ = "".join(docstr) + (
+            fn.__doc__ if fn.__doc__ is not None else ""
+        )
         return fn
 
     return docstring_decorator
@@ -115,8 +136,12 @@ def add_start_docstrings(*docstr):
 
 def add_start_docstrings_to_callable(*docstr):
     def docstring_decorator(fn):
-        class_name = ":class:`~transformers.{}`".format(fn.__qualname__.split(".")[0])
-        intro = "   The {} forward method, overrides the :func:`__call__` special method.".format(class_name)
+        class_name = ":class:`~transformers.{}`".format(
+            fn.__qualname__.split(".")[0]
+        )
+        intro = "   The {} forward method, overrides the :func:`__call__` special method.".format(
+            class_name
+        )
         note = r"""
 
     .. note::
@@ -125,7 +150,12 @@ def add_start_docstrings_to_callable(*docstr):
         instead of this since the former takes care of running the
         pre and post processing steps while the latter silently ignores them.
         """
-        fn.__doc__ = intro + note + "".join(docstr) + (fn.__doc__ if fn.__doc__ is not None else "")
+        fn.__doc__ = (
+            intro
+            + note
+            + "".join(docstr)
+            + (fn.__doc__ if fn.__doc__ is not None else "")
+        )
         return fn
 
     return docstring_decorator
@@ -155,6 +185,7 @@ def hf_bucket_url(identifier, postfix=None, cdn=False) -> str:
 def url_to_filename(url, etag=None):
     """
     Convert `url` into a hashed filename in a repeatable way.
+
     If `etag` is specified, append its hash to the url's, delimited
     by a period.
     If the url ends with .h5 (Keras HDF5 weights) adds '.h5' to the name
@@ -179,7 +210,9 @@ def url_to_filename(url, etag=None):
 def filename_to_url(filename, cache_dir=None):
     """
     Return the url and etag (which may be ``None``) stored for `filename`.
-    Raise ``EnvironmentError`` if `filename` or its stored metadata do not exist.
+
+    Raise ``EnvironmentError`` if `filename` or its stored metadata do
+    not exist.
     """
     if cache_dir is None:
         cache_dir = TRANSFORMERS_CACHE
@@ -203,7 +236,12 @@ def filename_to_url(filename, cache_dir=None):
 
 
 def cached_path(
-    url_or_filename, cache_dir=None, force_download=False, proxies=None, resume_download=False, user_agent=None
+    url_or_filename,
+    cache_dir=None,
+    force_download=False,
+    proxies=None,
+    resume_download=False,
+    user_agent=None,
 ) -> Optional[str]:
     """
     Given something that might be a URL (or might be a local path),
@@ -245,11 +283,17 @@ def cached_path(
         raise EnvironmentError("file {} not found".format(url_or_filename))
     else:
         # Something unknown
-        raise ValueError("unable to parse {} as a URL or as a local path".format(url_or_filename))
+        raise ValueError(
+            "unable to parse {} as a URL or as a local path".format(
+                url_or_filename
+            )
+        )
 
 
 def split_s3_path(url):
-    """Split a full s3 path into the bucket name and path."""
+    """
+    Split a full s3 path into the bucket name and path.
+    """
     parsed = urlparse(url)
     if not parsed.netloc or not parsed.path:
         raise ValueError("bad s3 path {}".format(url))
@@ -282,7 +326,9 @@ def s3_request(func):
 
 @s3_request
 def s3_etag(url, proxies=None):
-    """Check ETag on S3 object."""
+    """
+    Check ETag on S3 object.
+    """
     s3_resource = boto3.resource("s3", config=Config(proxies=proxies))
     bucket_name, s3_path = split_s3_path(url)
     s3_object = s3_resource.Object(bucket_name, s3_path)
@@ -291,20 +337,26 @@ def s3_etag(url, proxies=None):
 
 @s3_request
 def s3_get(url, temp_file, proxies=None):
-    """Pull a file directly from S3."""
+    """
+    Pull a file directly from S3.
+    """
     s3_resource = boto3.resource("s3", config=Config(proxies=proxies))
     bucket_name, s3_path = split_s3_path(url)
     s3_resource.Bucket(bucket_name).download_fileobj(s3_path, temp_file)
 
 
 def http_get(url, temp_file, proxies=None, resume_size=0, user_agent=None):
-    ua = "transformers/{}; python/{}".format(__version__, sys.version.split()[0])
+    ua = "transformers/{}; python/{}".format(
+        __version__, sys.version.split()[0]
+    )
     if is_torch_available():
         ua += "; torch/{}".format(torch.__version__)
     if is_tf_available():
         ua += "; tensorflow/{}".format(tf.__version__)
     if isinstance(user_agent, dict):
-        ua += "; " + "; ".join("{}/{}".format(k, v) for k, v in user_agent.items())
+        ua += "; " + "; ".join(
+            "{}/{}".format(k, v) for k, v in user_agent.items()
+        )
     elif isinstance(user_agent, str):
         ua += "; " + user_agent
     headers = {"user-agent": ua}
@@ -314,7 +366,11 @@ def http_get(url, temp_file, proxies=None, resume_size=0, user_agent=None):
     if response.status_code == 416:  # Range not satisfiable
         return
     content_length = response.headers.get("Content-Length")
-    total = resume_size + int(content_length) if content_length is not None else None
+    total = (
+        resume_size + int(content_length)
+        if content_length is not None
+        else None
+    )
     progress = tqdm(
         unit="B",
         unit_scale=True,
@@ -331,11 +387,17 @@ def http_get(url, temp_file, proxies=None, resume_size=0, user_agent=None):
 
 
 def get_from_cache(
-    url, cache_dir=None, force_download=False, proxies=None, etag_timeout=10, resume_download=False, user_agent=None
+    url,
+    cache_dir=None,
+    force_download=False,
+    proxies=None,
+    etag_timeout=10,
+    resume_download=False,
+    user_agent=None,
 ) -> Optional[str]:
     """
-    Given a URL, look for the corresponding file in the local cache.
-    If it's not there, download it. Then return the path to the cached file.
+    Given a URL, look for the corresponding file in the local cache. If it's
+    not there, download it. Then return the path to the cached file.
 
     Return:
         None in case of non-recoverable file (non-existent or inaccessible url + no cache on disk).
@@ -353,7 +415,12 @@ def get_from_cache(
         etag = s3_etag(url, proxies=proxies)
     else:
         try:
-            response = requests.head(url, allow_redirects=True, proxies=proxies, timeout=etag_timeout)
+            response = requests.head(
+                url,
+                allow_redirects=True,
+                proxies=proxies,
+                timeout=etag_timeout,
+            )
             if response.status_code != 200:
                 etag = None
             else:
@@ -374,7 +441,9 @@ def get_from_cache(
         else:
             matching_files = [
                 file
-                for file in fnmatch.filter(os.listdir(cache_dir), filename + ".*")
+                for file in fnmatch.filter(
+                    os.listdir(cache_dir), filename + ".*"
+                )
                 if not file.endswith(".json") and not file.endswith(".lock")
             ]
             if len(matching_files) > 0:
@@ -404,21 +473,35 @@ def get_from_cache(
             else:
                 resume_size = 0
         else:
-            temp_file_manager = partial(tempfile.NamedTemporaryFile, dir=cache_dir, delete=False)
+            temp_file_manager = partial(
+                tempfile.NamedTemporaryFile, dir=cache_dir, delete=False
+            )
             resume_size = 0
 
         # Download to temporary file, then copy to cache dir once finished.
         # Otherwise you get corrupt cache entries if the download gets interrupted.
         with temp_file_manager() as temp_file:
-            logger.info("%s not found in cache or force_download set to True, downloading to %s", url, temp_file.name)
+            logger.info(
+                "%s not found in cache or force_download set to True, downloading to %s",
+                url,
+                temp_file.name,
+            )
 
             # GET file object
             if url.startswith("s3://"):
                 if resume_download:
-                    logger.warn('Warning: resumable downloads are not implemented for "s3://" urls')
+                    logger.warn(
+                        'Warning: resumable downloads are not implemented for "s3://" urls'
+                    )
                 s3_get(url, temp_file, proxies=proxies)
             else:
-                http_get(url, temp_file, proxies=proxies, resume_size=resume_size, user_agent=user_agent)
+                http_get(
+                    url,
+                    temp_file,
+                    proxies=proxies,
+                    resume_size=resume_size,
+                    user_agent=user_agent,
+                )
 
         logger.info("storing %s in cache at %s", url, cache_path)
         os.rename(temp_file.name, cache_path)

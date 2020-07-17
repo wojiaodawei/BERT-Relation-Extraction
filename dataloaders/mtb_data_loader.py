@@ -31,15 +31,16 @@ class MTBPretrainDataLoader:
             config: configuration parameters
         """
         self.config = config
+        transformer = self.config.get("transformer")
 
-        tokenizer_path = "data/ALBERT_tokenizer.pkl"
+        tokenizer_path = "data/{0}_tokenizer.pkl".format(transformer)
         if os.path.isfile(tokenizer_path):
             with open(tokenizer_path, "rb") as pkl_file:
                 self.tokenizer = joblib.load(pkl_file)
             logger.info("Loaded tokenizer from saved path.")
         else:
             self.tokenizer = AlbertTokenizer.from_pretrained(
-                "albert-large-v2", do_lower_case=False
+                transformer, do_lower_case=False
             )
             self.tokenizer.add_tokens(
                 ["[E1]", "[/E1]", "[E2]", "[/E2]", "[BLANK]"]
@@ -47,7 +48,11 @@ class MTBPretrainDataLoader:
             with open(tokenizer_path, "wb") as output:
                 joblib.dump(self.tokenizer, output)
 
-            logger.info("Saved ALBERT tokenizer at {0}".format(tokenizer_path))
+            logger.info(
+                "Saved {0} tokenizer at {1}".format(
+                    transformer, tokenizer_path
+                )
+            )
         e1_id = self.tokenizer.convert_tokens_to_ids("[E1]")
         e2_id = self.tokenizer.convert_tokens_to_ids("[E2]")
         if e1_id == e2_id:

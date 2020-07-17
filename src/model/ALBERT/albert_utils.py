@@ -222,7 +222,7 @@ class BertSelfAttention(nn.Module):
 
 def prune_linear_layer(layer, index, dim=0):
     """
-    Prune a linear layer (a model parameters) to keep only entries in index.
+    Prune a linear layer (a models parameters) to keep only entries in index.
 
     Return the pruned layer as a new layer with requires_grad=True. Used
     to remove heads.
