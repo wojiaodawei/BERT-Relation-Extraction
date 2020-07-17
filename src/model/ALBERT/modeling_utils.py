@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-PyTorch BERT model.
+PyTorch BERT models.
 """
 
 
@@ -77,15 +77,15 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         as well as a few methods common to all models to (i) resize the input embeddings and (ii) prune heads in the self-attention heads.
 
         Class attributes (overridden by derived classes):
-            - ``config_class``: a class derived from :class:`~transformers.PretrainedConfig` to use as configuration class for this model architecture.
+            - ``config_class``: a class derived from :class:`~transformers.PretrainedConfig` to use as configuration class for this models architecture.
             - ``pretrained_model_archive_map``: a python ``dict`` of with `short-cut-names` (string) as keys and `url` (string) of associated pretrained weights as values.
-            - ``load_tf_weights``: a python ``method`` for loading a TensorFlow checkpoint in a PyTorch model, taking as arguments:
+            - ``load_tf_weights``: a python ``method`` for loading a TensorFlow checkpoint in a PyTorch models, taking as arguments:
 
-                - ``model``: an instance of the relevant subclass of :class:`~transformers.PreTrainedModel`,
+                - ``models``: an instance of the relevant subclass of :class:`~transformers.PreTrainedModel`,
                 - ``config``: an instance of the relevant subclass of :class:`~transformers.PretrainedConfig`,
                 - ``path``: a path (string) to the TensorFlow checkpoint.
 
-            - ``base_model_prefix``: a string indicating the attribute associated to the base model in derived classes of the same architecture adding modules on top of the base model.
+            - ``base_model_prefix``: a string indicating the attribute associated to the base models in derived classes of the same architecture adding modules on top of the base models.
     """
     config_class = None
     pretrained_model_archive_map = {}
@@ -106,12 +106,12 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         if not isinstance(config, PretrainedConfig):
             raise ValueError(
                 "Parameter config in `{}(config)` should be an instance of class `PretrainedConfig`. "
-                "To create a model from a pretrained model use "
-                "`model = {}.from_pretrained(PRETRAINED_MODEL_NAME)`".format(
+                "To create a models from a pretrained models use "
+                "`models = {}.from_pretrained(PRETRAINED_MODEL_NAME)`".format(
                     self.__class__.__name__, self.__class__.__name__
                 )
             )
-        # Save config in model
+        # Save config in models
         self.config = config
 
     @property
@@ -120,7 +120,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
 
     def get_input_embeddings(self):
         """
-        Returns the model's input embeddings.
+        Returns the models's input embeddings.
 
         Returns:
             :obj:`nn.Module`:
@@ -134,7 +134,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
 
     def set_input_embeddings(self, value):
         """
-        Set model's input embeddings.
+        Set models's input embeddings.
 
         Args:
             value (:obj:`nn.Module`):
@@ -148,7 +148,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
 
     def get_output_embeddings(self):
         """
-        Returns the model's output embeddings.
+        Returns the models's output embeddings.
 
         Returns:
             :obj:`nn.Module`:
@@ -202,27 +202,27 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
 
     def resize_token_embeddings(self, new_num_tokens=None):
         """
-        Resize input token embeddings matrix of the model if new_num_tokens !=
+        Resize input token embeddings matrix of the models if new_num_tokens !=
         config.vocab_size. Take care of tying weights embeddings afterwards if
-        the model class has a `tie_weights()` method.
+        the models class has a `tie_weights()` method.
 
         Arguments:
 
             new_num_tokens: (`optional`) int:
                 New number of tokens in the embedding matrix. Increasing the size will add newly initialized vectors at the end. Reducing the size will remove vectors from the end.
-                If not provided or None: does nothing and just returns a pointer to the input tokens ``torch.nn.Embeddings`` Module of the model.
+                If not provided or None: does nothing and just returns a pointer to the input tokens ``torch.nn.Embeddings`` Module of the models.
 
         Return: ``torch.nn.Embeddings``
-            Pointer to the input tokens Embeddings Module of the model
+            Pointer to the input tokens Embeddings Module of the models
         """
         base_model = getattr(
             self, self.base_model_prefix, self
-        )  # get the base model if needed
+        )  # get the base models if needed
         model_embeds = base_model._resize_token_embeddings(new_num_tokens)
         if new_num_tokens is None:
             return model_embeds
 
-        # Update base model and current model config
+        # Update base models and current models config
         self.config.vocab_size = new_num_tokens
         base_model.vocab_size = new_num_tokens
 
@@ -292,7 +292,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
 
     def prune_heads(self, heads_to_prune):
         """
-        Prunes heads of the base model.
+        Prunes heads of the base models.
 
         Arguments:
 
@@ -312,15 +312,15 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
 
     def save_pretrained(self, save_directory):
         """
-        Save a model and its configuration file to a directory, so that it can
+        Save a models and its configuration file to a directory, so that it can
         be re-loaded using the
         `:func:`~transformers.PreTrainedModel.from_pretrained`` class method.
         """
         assert os.path.isdir(
             save_directory
-        ), "Saving path should be a directory where the model and configuration can be saved"
+        ), "Saving path should be a directory where the models and configuration can be saved"
 
-        # Only save the model itself if we are using distributed training
+        # Only save the models itself if we are using distributed training
         model_to_save = self.module if hasattr(self, "module") else self
 
         # Attach architecture to the config
@@ -338,46 +338,46 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
     def from_pretrained(
         cls, pretrained_model_name_or_path, *model_args, **kwargs
     ):
-        r"""Instantiate a pretrained pytorch model from a pre-trained model configuration.
+        r"""Instantiate a pretrained pytorch models from a pre-trained models configuration.
 
-        The model is set in evaluation mode by default using ``model.eval()`` (Dropout modules are deactivated)
-        To train the model, you should first set it back in training mode with ``model.train()``
+        The models is set in evaluation mode by default using ``models.eval()`` (Dropout modules are deactivated)
+        To train the models, you should first set it back in training mode with ``models.train()``
 
-        The warning ``Weights from XXX not initialized from pretrained model`` means that the weights of XXX do not come pre-trained with the rest of the model.
+        The warning ``Weights from XXX not initialized from pretrained models`` means that the weights of XXX do not come pre-trained with the rest of the models.
         It is up to you to train those weights with a downstream fine-tuning task.
 
         The warning ``Weights from XXX not used in YYY`` means that the layer XXX is not used by YYY, therefore those weights are discarded.
 
         Parameters:
             pretrained_model_name_or_path: either:
-              - a string with the `shortcut name` of a pre-trained model to load from cache or download, e.g.: ``bert-base-uncased``.
-              - a string with the `identifier name` of a pre-trained model that was user-uploaded to our S3, e.g.: ``dbmdz/bert-base-german-cased``.
-              - a path to a `directory` containing model weights saved using :func:`~transformers.PreTrainedModel.save_pretrained`, e.g.: ``./my_model_directory/``.
-              - a path or url to a `tensorflow index checkpoint file` (e.g. `./tf_model/model.ckpt.index`). In this case, ``from_tf`` should be set to True and a configuration object should be provided as ``config`` argument. This loading path is slower than converting the TensorFlow checkpoint in a PyTorch model using the provided conversion scripts and loading the PyTorch model afterwards.
+              - a string with the `shortcut name` of a pre-trained models to load from cache or download, e.g.: ``bert-base-uncased``.
+              - a string with the `identifier name` of a pre-trained models that was user-uploaded to our S3, e.g.: ``dbmdz/bert-base-german-cased``.
+              - a path to a `directory` containing models weights saved using :func:`~transformers.PreTrainedModel.save_pretrained`, e.g.: ``./my_model_directory/``.
+              - a path or url to a `tensorflow index checkpoint file` (e.g. `./tf_model/models.ckpt.index`). In this case, ``from_tf`` should be set to True and a configuration object should be provided as ``config`` argument. This loading path is slower than converting the TensorFlow checkpoint in a PyTorch models using the provided conversion scripts and loading the PyTorch models afterwards.
               - None if you are both providing the configuration and state dictionary (resp. with keyword arguments ``config`` and ``state_dict``)
 
             model_args: (`optional`) Sequence of positional arguments:
-                All remaning positional arguments will be passed to the underlying model's ``__init__`` method
+                All remaning positional arguments will be passed to the underlying models's ``__init__`` method
 
             config: (`optional`) one of:
                 - an instance of a class derived from :class:`~transformers.PretrainedConfig`, or
                 - a string valid as input to :func:`~transformers.PretrainedConfig.from_pretrained()`
-                Configuration for the model to use instead of an automatically loaded configuation. Configuration can be automatically loaded when:
-                    - the model is a model provided by the library (loaded with the ``shortcut-name`` string of a pretrained model), or
-                    - the model was saved using :func:`~transformers.PreTrainedModel.save_pretrained` and is reloaded by suppling the save directory.
-                    - the model is loaded by suppling a local directory as ``pretrained_model_name_or_path`` and a configuration JSON file named `config.json` is found in the directory.
+                Configuration for the models to use instead of an automatically loaded configuation. Configuration can be automatically loaded when:
+                    - the models is a models provided by the library (loaded with the ``shortcut-name`` string of a pretrained models), or
+                    - the models was saved using :func:`~transformers.PreTrainedModel.save_pretrained` and is reloaded by suppling the save directory.
+                    - the models is loaded by suppling a local directory as ``pretrained_model_name_or_path`` and a configuration JSON file named `config.json` is found in the directory.
 
             state_dict: (`optional`) dict:
-                an optional state dictionnary for the model to use instead of a state dictionary loaded from saved weights file.
-                This option can be used if you want to create a model from a pretrained configuration but load your own weights.
+                an optional state dictionnary for the models to use instead of a state dictionary loaded from saved weights file.
+                This option can be used if you want to create a models from a pretrained configuration but load your own weights.
                 In this case though, you should check if using :func:`~transformers.PreTrainedModel.save_pretrained` and :func:`~transformers.PreTrainedModel.from_pretrained` is not a simpler option.
 
             cache_dir: (`optional`) string:
-                Path to a directory in which a downloaded pre-trained model
+                Path to a directory in which a downloaded pre-trained models
                 configuration should be cached if the standard cache should not be used.
 
             force_download: (`optional`) boolean, default False:
-                Force to (re-)download the model weights and configuration files and override the cached versions if they exists.
+                Force to (re-)download the models weights and configuration files and override the cached versions if they exists.
 
             resume_download: (`optional`) boolean, default False:
                 Do not delete incompletely recieved file. Attempt to resume the download if such a file exists.
@@ -390,21 +390,21 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
                 Set to ``True`` to also return a dictionnary containing missing keys, unexpected keys and error messages.
 
             kwargs: (`optional`) Remaining dictionary of keyword arguments:
-                Can be used to update the configuration object (after it being loaded) and initiate the model. (e.g. ``output_attention=True``). Behave differently depending on whether a `config` is provided or automatically loaded:
+                Can be used to update the configuration object (after it being loaded) and initiate the models. (e.g. ``output_attention=True``). Behave differently depending on whether a `config` is provided or automatically loaded:
 
-                - If a configuration is provided with ``config``, ``**kwargs`` will be directly passed to the underlying model's ``__init__`` method (we assume all relevant updates to the configuration have already been done)
-                - If a configuration is not provided, ``kwargs`` will be first passed to the configuration class initialization function (:func:`~transformers.PretrainedConfig.from_pretrained`). Each key of ``kwargs`` that corresponds to a configuration attribute will be used to override said attribute with the supplied ``kwargs`` value. Remaining keys that do not correspond to any configuration attribute will be passed to the underlying model's ``__init__`` function.
+                - If a configuration is provided with ``config``, ``**kwargs`` will be directly passed to the underlying models's ``__init__`` method (we assume all relevant updates to the configuration have already been done)
+                - If a configuration is not provided, ``kwargs`` will be first passed to the configuration class initialization function (:func:`~transformers.PretrainedConfig.from_pretrained`). Each key of ``kwargs`` that corresponds to a configuration attribute will be used to override said attribute with the supplied ``kwargs`` value. Remaining keys that do not correspond to any configuration attribute will be passed to the underlying models's ``__init__`` function.
 
         Examples::
 
             # For example purposes. Not runnable.
-            model = BertModel.from_pretrained('bert-base-uncased')    # Download model and configuration from S3 and cache.
-            model = BertModel.from_pretrained('./test/saved_model/')  # E.g. model was saved using `save_pretrained('./test/saved_model/')`
-            model = BertModel.from_pretrained('bert-base-uncased', output_attention=True)  # Update configuration during loading
-            assert model.config.output_attention == True
-            # Loading from a TF checkpoint file instead of a PyTorch model (slower)
+            models = BertModel.from_pretrained('bert-base-uncased')    # Download models and configuration from S3 and cache.
+            models = BertModel.from_pretrained('./test/saved_model/')  # E.g. models was saved using `save_pretrained('./test/saved_model/')`
+            models = BertModel.from_pretrained('bert-base-uncased', output_attention=True)  # Update configuration during loading
+            assert models.config.output_attention == True
+            # Loading from a TF checkpoint file instead of a PyTorch models (slower)
             config = BertConfig.from_json_file('./tf_model/my_tf_model_config.json')
-            model = BertModel.from_pretrained('./tf_model/my_tf_checkpoint.ckpt.index', from_tf=True, config=config)
+            models = BertModel.from_pretrained('./tf_model/my_tf_checkpoint.ckpt.index', from_tf=True, config=config)
 
         """
         config = kwargs.pop("config", None)
@@ -434,7 +434,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         else:
             model_kwargs = kwargs
 
-        # Load model
+        # Load models
         if pretrained_model_name_or_path is not None:
             if (
                 pretrained_model_name_or_path
@@ -499,7 +499,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
                 )
                 if from_tf:
                     raise EnvironmentError(
-                        "Loading a PyTorch model from a TF checkpoint is not supported when using a model identifier name."
+                        "Loading a PyTorch models from a TF checkpoint is not supported when using a models identifier name."
                     )
 
             # redirect to the cache, if necessary
@@ -521,8 +521,8 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
                     )
                 else:
                     msg = (
-                        "Model name '{}' was not found in model name list ({}). "
-                        "We assumed '{}' was a path or url to model weight files named one of {} but "
+                        "Model name '{}' was not found in models name list ({}). "
+                        "We assumed '{}' was a path or url to models weight files named one of {} but "
                         "couldn't find any such file at this path or url.".format(
                             pretrained_model_name_or_path,
                             ", ".join(cls.pretrained_model_archive_map.keys()),
@@ -543,7 +543,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         else:
             resolved_archive_file = None
 
-        # Instantiate model.
+        # Instantiate models.
         model = cls(config, *model_args, **model_kwargs)
 
         if state_dict is None and not from_tf:
@@ -554,7 +554,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
             except Exception:
                 raise OSError(
                     "Unable to load weights from pytorch checkpoint file. "
-                    "If you tried to load a PyTorch model from a TF 2.0 checkpoint, please set from_tf=True. "
+                    "If you tried to load a PyTorch models from a TF 2.0 checkpoint, please set from_tf=True. "
                 )
 
         missing_keys = []
@@ -579,7 +579,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
                     )
                 except ImportError:
                     logger.error(
-                        "Loading a TensorFlow model in PyTorch, requires both PyTorch and TensorFlow to be installed. Please see "
+                        "Loading a TensorFlow models in PyTorch, requires both PyTorch and TensorFlow to be installed. Please see "
                         "https://pytorch.org/ and https://www.tensorflow.org/install/ for installation instructions."
                     )
                     raise
@@ -639,13 +639,13 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
             load(model_to_load, prefix=start_prefix)
             if len(missing_keys) > 0:
                 logger.info(
-                    "Weights of {} not initialized from pretrained model: {}".format(
+                    "Weights of {} not initialized from pretrained models: {}".format(
                         model.__class__.__name__, missing_keys
                     )
                 )
             if len(unexpected_keys) > 0:
                 logger.info(
-                    "Weights from pretrained model not used in {}: {}".format(
+                    "Weights from pretrained models not used in {}: {}".format(
                         model.__class__.__name__, unexpected_keys
                     )
                 )
@@ -658,7 +658,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
 
         model.tie_weights()  # make sure word embedding weights are still tied if needed
 
-        # Set model in evaluation mode to desactivate DropOut modules by default
+        # Set models in evaluation mode to desactivate DropOut modules by default
         model.eval()
 
         if output_loading_info:
@@ -754,39 +754,39 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         Examples::
 
             tokenizer = AutoTokenizer.from_pretrained('distilgpt2')   # Initialize tokenizer
-            model = AutoModelWithLMHead.from_pretrained('distilgpt2')    # Download model and configuration from S3 and cache.
-            outputs = model.generate(max_length=40, bos_token_id=tokenizer.bos_token_id, eos_token_ids=tokenizer.eos_token_id)  # do greedy decoding without beam search
+            models = AutoModelWithLMHead.from_pretrained('distilgpt2')    # Download models and configuration from S3 and cache.
+            outputs = models.generate(max_length=40, bos_token_id=tokenizer.bos_token_id, eos_token_ids=tokenizer.eos_token_id)  # do greedy decoding without beam search
             print('Generated: {}'.format(tokenizer.decode(outputs[0], skip_special_tokens=True)))
 
             tokenizer = AutoTokenizer.from_pretrained('openai-gpt')   # Initialize tokenizer
-            model = AutoModelWithLMHead.from_pretrained('openai-gpt')    # Download model and configuration from S3 and cache.
+            models = AutoModelWithLMHead.from_pretrained('openai-gpt')    # Download models and configuration from S3 and cache.
             input_context = 'The dog'
             input_ids = torch.tensor(tokenizer.encode(input_context)).unsqueeze(0)  # encode input context
-            outputs = model.generate(input_ids=input_ids, do_sample=True, num_beams=5, num_return_sequences=3, temperature=1.5)  # generate 3 independent sequences using beam search decoding (5 beams) with sampling from initial context 'The dog'
+            outputs = models.generate(input_ids=input_ids, do_sample=True, num_beams=5, num_return_sequences=3, temperature=1.5)  # generate 3 independent sequences using beam search decoding (5 beams) with sampling from initial context 'The dog'
             for i in range(3): #  3 output sequences were generated
                 print('Generated {}: {}'.format(i, tokenizer.decode(outputs[0][i], skip_special_tokens=True)))
 
             tokenizer = AutoTokenizer.from_pretrained('distilgpt2')   # Initialize tokenizer
-            model = AutoModelWithLMHead.from_pretrained('distilgpt2')    # Download model and configuration from S3 and cache.
+            models = AutoModelWithLMHead.from_pretrained('distilgpt2')    # Download models and configuration from S3 and cache.
             input_context = 'The dog'
             input_ids = torch.tensor(tokenizer.encode(input_context)).unsqueeze(0)  # encode input context
-            outputs = model.generate(input_ids=input_ids, max_length=40, temperature=0.7, bos_token_id=tokenizer.bos_token_id, eos_token_ids=tokenizer.eos_token_id, num_beams=3)  # generate sequences using greedy beam search decoding (3 beams)
+            outputs = models.generate(input_ids=input_ids, max_length=40, temperature=0.7, bos_token_id=tokenizer.bos_token_id, eos_token_ids=tokenizer.eos_token_id, num_beams=3)  # generate sequences using greedy beam search decoding (3 beams)
             print('Generated: {}'.format(tokenizer.decode(outputs[0], skip_special_tokens=True)))
 
             tokenizer = AutoTokenizer.from_pretrained('ctrl')   # Initialize tokenizer
-            model = AutoModelWithLMHead.from_pretrained('ctrl')    # Download model and configuration from S3 and cache.
+            models = AutoModelWithLMHead.from_pretrained('ctrl')    # Download models and configuration from S3 and cache.
             input_context = 'Legal My neighbor is'  # "Legal" is one of the control codes for ctrl
             input_ids = torch.tensor(tokenizer.encode(input_context)).unsqueeze(0)  # encode input context
-            outputs = model.generate(input_ids=input_ids, max_length=50, temperature=0.7, repetition_penalty=1.2)  # generate sequences using using greedy search
+            outputs = models.generate(input_ids=input_ids, max_length=50, temperature=0.7, repetition_penalty=1.2)  # generate sequences using using greedy search
             print('Generated: {}'.format(tokenizer.decode(outputs[0], skip_special_tokens=True)))
 
         """
 
-        # We cannot generate if the model does not have a LM head
+        # We cannot generate if the models does not have a LM head
         if self.get_output_embeddings() is None:
             raise AttributeError(
-                "You tried to generate sequences with a model that does not have a LM Head."
-                "Please use another model class (e.g. `OpenAIGPTLMHeadModel`, `XLNetLMHeadModel`, `GPT2LMHeadModel`, `CTRLLMHeadModel`, `T5WithLMHeadModel`, `TransfoXLLMHeadModel`)"
+                "You tried to generate sequences with a models that does not have a LM Head."
+                "Please use another models class (e.g. `OpenAIGPTLMHeadModel`, `XLNetLMHeadModel`, `GPT2LMHeadModel`, `CTRLLMHeadModel`, `T5WithLMHeadModel`, `TransfoXLLMHeadModel`)"
             )
 
         max_length = (
@@ -970,7 +970,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
             outputs = self(**model_inputs)
             next_token_logits = outputs[0][:, -1, :]
 
-            # if model has past, then set the past variable to speed up decoding
+            # if models has past, then set the past variable to speed up decoding
             if self._do_output_past(outputs):
                 past = outputs[1]
 
@@ -1087,7 +1087,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
                 :, -1, :
             ]  # (batch_size * num_beams, vocab_size)
 
-            # if model has past, then set the past variable to speed up decoding
+            # if models has past, then set the past variable to speed up decoding
             if self._do_output_past(outputs):
                 past = outputs[1]
 

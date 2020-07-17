@@ -12,7 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Tokenization classes for ALBERT model."""
+"""
+Tokenization classes for ALBERT models.
+"""
 
 
 import logging
@@ -22,9 +24,8 @@ from shutil import copyfile
 
 from .tokenization_utils import PreTrainedTokenizer
 
-
 logger = logging.getLogger(__name__)
-VOCAB_FILES_NAMES = {"vocab_file": "spiece.model"}
+VOCAB_FILES_NAMES = {"vocab_file": "spiece.models"}
 
 PRETRAINED_VOCAB_FILES_MAP = {
     "vocab_file": {
@@ -55,9 +56,9 @@ SPIECE_UNDERLINE = "▁"
 
 class AlbertTokenizer(PreTrainedTokenizer):
     """
-        SentencePiece based tokenizer. Peculiarities:
+    SentencePiece based tokenizer. Peculiarities:
 
-            - requires `SentencePiece <https://github.com/google/sentencepiece>`_
+    - requires `SentencePiece <https://github.com/google/sentencepiece>`_
     """
 
     vocab_files_names = VOCAB_FILES_NAMES
@@ -90,8 +91,12 @@ class AlbertTokenizer(PreTrainedTokenizer):
             **kwargs,
         )
 
-        self.max_len_single_sentence = self.max_len - 2  # take into account special tokens
-        self.max_len_sentences_pair = self.max_len - 3  # take into account special tokens
+        self.max_len_single_sentence = (
+            self.max_len - 2
+        )  # take into account special tokens
+        self.max_len_sentences_pair = (
+            self.max_len - 3
+        )  # take into account special tokens
 
         try:
             import sentencepiece as spm
@@ -141,14 +146,18 @@ class AlbertTokenizer(PreTrainedTokenizer):
 
         if not self.keep_accents:
             outputs = unicodedata.normalize("NFKD", outputs)
-            outputs = "".join([c for c in outputs if not unicodedata.combining(c)])
+            outputs = "".join(
+                [c for c in outputs if not unicodedata.combining(c)]
+            )
         if self.do_lower_case:
             outputs = outputs.lower()
 
         return outputs
 
     def _tokenize(self, text, sample=False):
-        """ Tokenize a string. """
+        """
+        Tokenize a string.
+        """
         text = self.preprocess_text(text)
 
         if not sample:
@@ -157,9 +166,18 @@ class AlbertTokenizer(PreTrainedTokenizer):
             pieces = self.sp_model.SampleEncodeAsPieces(text, 64, 0.1)
         new_pieces = []
         for piece in pieces:
-            if len(piece) > 1 and piece[-1] == str(",") and piece[-2].isdigit():
-                cur_pieces = self.sp_model.EncodeAsPieces(piece[:-1].replace(SPIECE_UNDERLINE, ""))
-                if piece[0] != SPIECE_UNDERLINE and cur_pieces[0][0] == SPIECE_UNDERLINE:
+            if (
+                len(piece) > 1
+                and piece[-1] == str(",")
+                and piece[-2].isdigit()
+            ):
+                cur_pieces = self.sp_model.EncodeAsPieces(
+                    piece[:-1].replace(SPIECE_UNDERLINE, "")
+                )
+                if (
+                    piece[0] != SPIECE_UNDERLINE
+                    and cur_pieces[0][0] == SPIECE_UNDERLINE
+                ):
                     if len(cur_pieces[0]) == 1:
                         cur_pieces = cur_pieces[1:]
                     else:
@@ -172,25 +190,33 @@ class AlbertTokenizer(PreTrainedTokenizer):
         return new_pieces
 
     def _convert_token_to_id(self, token):
-        """ Converts a token (str) in an id using the vocab. """
+        """
+        Converts a token (str) in an id using the vocab.
+        """
         return self.sp_model.PieceToId(token)
 
     def _convert_id_to_token(self, index):
-        """Converts an index (integer) in a token (str) using the vocab."""
+        """
+        Converts an index (integer) in a token (str) using the vocab.
+        """
         return self.sp_model.IdToPiece(index)
 
     def convert_tokens_to_string(self, tokens):
-        """Converts a sequence of tokens (strings for sub-words) in a single string."""
+        """
+        Converts a sequence of tokens (strings for sub-words) in a single
+        string.
+        """
         out_string = "".join(tokens).replace(SPIECE_UNDERLINE, " ").strip()
         return out_string
 
     def build_inputs_with_special_tokens(self, token_ids_0, token_ids_1=None):
         """
-        Build model inputs from a sequence or a pair of sequence for sequence classification tasks
-        by concatenating and adding special tokens.
-        An ALBERT sequence has the following format:
-            single sequence: [CLS] X [SEP]
-            pair of sequences: [CLS] A [SEP] B [SEP]
+        Build models inputs from a sequence or a pair of sequence for sequence
+        classification tasks by concatenating and adding special tokens.
+
+        An ALBERT sequence has the following format:     single
+        sequence: [CLS] X [SEP]     pair of sequences: [CLS] A [SEP] B
+        [SEP]
         """
         sep = [self.sep_token_id]
         cls = [self.cls_token_id]
@@ -198,17 +224,20 @@ class AlbertTokenizer(PreTrainedTokenizer):
             return cls + token_ids_0 + sep
         return cls + token_ids_0 + sep + token_ids_1 + sep
 
-    def get_special_tokens_mask(self, token_ids_0, token_ids_1=None, already_has_special_tokens=False):
+    def get_special_tokens_mask(
+        self, token_ids_0, token_ids_1=None, already_has_special_tokens=False
+    ):
         """
-        Retrieves sequence ids from a token list that has no special tokens added. This method is called when adding
-        special tokens using the tokenizer ``prepare_for_model`` or ``encode_plus`` methods.
+        Retrieves sequence ids from a token list that has no special tokens
+        added. This method is called when adding special tokens using the
+        tokenizer ``prepare_for_model`` or ``encode_plus`` methods.
 
         Args:
             token_ids_0: list of ids (must not contain special tokens)
             token_ids_1: Optional list of ids (must not contain special tokens), necessary when fetching sequence ids
                 for sequence pairs
             already_has_special_tokens: (default False) Set to True if the token list is already formated with
-                special tokens for the model
+                special tokens for the models
 
         Returns:
             A list of integers in the range [0, 1]: 0 for a special token, 1 for a sequence token.
@@ -218,19 +247,35 @@ class AlbertTokenizer(PreTrainedTokenizer):
             if token_ids_1 is not None:
                 raise ValueError(
                     "You should not supply a second sequence if the provided sequence of "
-                    "ids is already formated with special tokens for the model."
+                    "ids is already formated with special tokens for the models."
                 )
-            return list(map(lambda x: 1 if x in [self.sep_token_id, self.cls_token_id] else 0, token_ids_0))
+            return list(
+                map(
+                    lambda x: 1
+                    if x in [self.sep_token_id, self.cls_token_id]
+                    else 0,
+                    token_ids_0,
+                )
+            )
 
         if token_ids_1 is not None:
-            return [1] + ([0] * len(token_ids_0)) + [1] + ([0] * len(token_ids_1)) + [1]
+            return (
+                [1]
+                + ([0] * len(token_ids_0))
+                + [1]
+                + ([0] * len(token_ids_1))
+                + [1]
+            )
         return [1] + ([0] * len(token_ids_0)) + [1]
 
-    def create_token_type_ids_from_sequences(self, token_ids_0, token_ids_1=None):
+    def create_token_type_ids_from_sequences(
+        self, token_ids_0, token_ids_1=None
+    ):
         """
-        Creates a mask from the two sequences passed to be used in a sequence-pair classification task.
-        An ALBERT sequence pair mask has the following format:
-        0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1
+        Creates a mask from the two sequences passed to be used in a sequence-
+        pair classification task. An ALBERT sequence pair mask has the
+        following format: 0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1.
+
         | first sequence    | second sequence
 
         if token_ids_1 is None, only returns the first portion of the mask (0's).
@@ -240,16 +285,25 @@ class AlbertTokenizer(PreTrainedTokenizer):
 
         if token_ids_1 is None:
             return len(cls + token_ids_0 + sep) * [0]
-        return len(cls + token_ids_0 + sep) * [0] + len(token_ids_1 + sep) * [1]
+        return len(cls + token_ids_0 + sep) * [0] + len(token_ids_1 + sep) * [
+            1
+        ]
 
     def save_vocabulary(self, save_directory):
-        """ Save the sentencepiece vocabulary (copy original file) and special tokens file
-            to a directory.
+        """
+        Save the sentencepiece vocabulary (copy original file) and special
+        tokens file to a directory.
         """
         if not os.path.isdir(save_directory):
-            logger.error("Vocabulary path ({}) should be a directory".format(save_directory))
+            logger.error(
+                "Vocabulary path ({}) should be a directory".format(
+                    save_directory
+                )
+            )
             return
-        out_vocab_file = os.path.join(save_directory, VOCAB_FILES_NAMES["vocab_file"])
+        out_vocab_file = os.path.join(
+            save_directory, VOCAB_FILES_NAMES["vocab_file"]
+        )
 
         if os.path.abspath(self.vocab_file) != os.path.abspath(out_vocab_file):
             copyfile(self.vocab_file, out_vocab_file)
