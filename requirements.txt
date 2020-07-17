@@ -6,4 +6,5 @@ spacy==2.1.0
 boto3==1.14.11
 git+ssh://git@github.com/ebot7/ml_utils.git@v1.2.3#egg=ml_utils[normalizer]
 transformers==3.0.2
-nerualcoref==4.0
+torch==1.5.1
+matplotlib==3.3.0
