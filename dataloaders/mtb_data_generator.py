@@ -13,21 +13,23 @@ logging.basicConfig(
 logger = logging.getLogger("__file__")
 
 
-class MTBTrainGenerator(Dataset):
-    def __init__(
-        self, dataset, tokenizer, batch_size=None,
-    ):
+class MTBGenerator(Dataset):
+    def __init__(self, data, tokenizer, dataset: str, batch_size=None):
         """
         Data Generator for Matching the blanks models.
 
         Args:
-            dataset: Dataset containing information about the relations and the position of the entities
+            data: Dataset containing information about the relations and the position of the entities and the dataset
             tokenizer: Huggingface transformers tokenizer to use
+            dataset: Dataset type of the generator. May be train, validation or test
             batch_size: Batch size
         """
         self.batch_size = batch_size
 
-        self.data = dataset
+        self.data = data
+        self.data["entities_pools"] = [
+            ep for ep in self.data["entities_pools"] if ep[3] == dataset
+        ]
         self.tokenizer = tokenizer
 
         self.r_entities_map = {}
@@ -54,10 +56,10 @@ class MTBTrainGenerator(Dataset):
         """
         Create a generator that iterate over the Sequence.
         """
-        yield from (item for item in (self[i] for i in range(len(self))))
+        yield from (item for item in [self[i] for i in range(len(self))])
 
     def __len__(self):
-        return int(len(self.data["tokenized_relations"]) - 1)
+        return len(self.r_entities_map) - 1
 
     def _put_blanks(self, data):
         alpha = 0.7
@@ -110,6 +112,7 @@ class MTBTrainGenerator(Dataset):
 
     def __getitem__(self, idx):
         tokenized_relations = self.data["tokenized_relations"]
+        idx = list(self.r_entities_map.keys())[idx]
         pool_id = self.r_entities_map[idx]
         this_entity_pool = self.data["entities_pools"][pool_id]
         pos_idxs = np.random.choice(

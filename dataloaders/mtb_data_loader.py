@@ -13,7 +13,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AlbertTokenizer
 
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
-from dataloaders.mtb_data_generator import MTBTrainGenerator
+from dataloaders.mtb_data_generator import MTBGenerator
 from src.misc import get_subject_objects
 
 logging.basicConfig(
@@ -64,10 +64,17 @@ class MTBPretrainDataLoader:
 
         self.normalizer = Normalizer("en", config.get("normalization", []))
         self.data = self.load_dataset()
-        self.train_generator = MTBTrainGenerator(
-            dataset=self.data,
+        self.train_generator = MTBGenerator(
+            data=self.data.copy(),
             batch_size=self.config.get("batch_size"),
             tokenizer=self.tokenizer,
+            dataset="train",
+        )
+        self.validation_generator = MTBGenerator(
+            data=self.data.copy(),
+            batch_size=self.config.get("batch_size"),
+            tokenizer=self.tokenizer,
+            dataset="validation",
         )
 
     def load_dataset(self):
@@ -192,7 +199,13 @@ class MTBPretrainDataLoader:
         """
         df["relation_id"] = np.arange(0, len(df))
         logger.info("Generating class pools")
-        return MTBPretrainDataLoader.generate_entities_pools(df)
+        pools = MTBPretrainDataLoader.generate_entities_pools(df)
+        for idx, pool in enumerate(pools):
+            if np.random.random() > 0.75:
+                pools[idx] = pool + ("validation",)
+            else:
+                pools[idx] = pool + ("train",)
+        return pools
 
     @classmethod
     def generate_entities_pools(cls, data: pd.DataFrame):
