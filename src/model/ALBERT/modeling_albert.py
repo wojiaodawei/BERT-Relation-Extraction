@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers import AlbertConfig
+from transformers.modeling_utils import PreTrainedModel
 
 from src.model.ALBERT.albert_utils import (
     ACT2FN,
@@ -15,7 +16,6 @@ from src.model.ALBERT.albert_utils import (
 )
 
 from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
-from .modeling_utils import PreTrainedModel
 
 get_logger = logging.getLogger(__name__)
 logger = get_logger
