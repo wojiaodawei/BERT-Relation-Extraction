@@ -9,12 +9,11 @@ import logging
 import os
 import time
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.nn.utils import clip_grad_norm_
-
-import matplotlib.pyplot as plt
 
 from ..misc import load_pickle, save_as_pickle
 from .preprocessing_funcs import load_dataloaders
@@ -41,7 +40,7 @@ def train_and_fit(args):
     logger.info("Loaded %d Training samples." % train_len)
 
     if args.model_no == 0:
-        from ..model.BERT.modeling_bert import BertModel as Model
+        from model.bert.bert import BertModel as Model
 
         model = args.model_size  #'bert-base-uncased'
         model_name = "BERT"
@@ -53,10 +52,10 @@ def train_and_fit(args):
             n_classes_=args.num_classes,
         )
     elif args.model_no == 1:
-        from ..model.ALBERT.modeling_albert import AlbertModel as Model
+        from model.albert.albert import AlbertModel as Model
 
         model = args.model_size  #'albert-base-v2'
-        model_name = "ALBERT"
+        model_name = "BERT"
         net = Model.from_pretrained(
             model,
             force_download=False,
@@ -65,7 +64,7 @@ def train_and_fit(args):
             n_classes_=args.num_classes,
         )
     elif args.model_no == 2:  # BioBert
-        from ..model.BERT.modeling_bert import BertConfig, BertModel
+        from model.bert.bert import BertModel, BertConfig
 
         model = "bert-base-uncased"
         model_name = "BioBERT"
@@ -132,7 +131,7 @@ def train_and_fit(args):
 
     if args.use_pretrained_blanks == 1:
         logger.info(
-            "Loading models pre-trained on blanks at ./data/test_checkpoint_%d.pth.tar..."
+            "Loading model pre-trained on blanks at ./data/test_checkpoint_%d.pth.tar..."
             % args.model_no
         )
         checkpoint_path = "./data/test_checkpoint_%d.pth.tar" % args.model_no

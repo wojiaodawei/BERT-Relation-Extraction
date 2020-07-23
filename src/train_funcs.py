@@ -50,9 +50,6 @@ class Two_Headed_Loss(nn.Module):
             p = factor * torch.dot(f1_vec, f2_vec)
         return p
 
-    def dot_(self, f1_vec, f2_vec):
-        return -torch.dot(f1_vec, f2_vec)
-
     def forward(
         self, lm_logits, blank_logits, lm_labels, blank_labels, verbose=False
     ):

@@ -393,21 +393,21 @@ class fewrel_dataset(Dataset):
 
 def load_dataloaders(args):
     if args.model_no == 0:
-        from ..model.BERT.tokenization_bert import BertTokenizer as Tokenizer
+        from model.bert.bert_tokenizer import BertTokenizer as Tokenizer
 
         model = args.model_size  #'bert-large-uncased' 'bert-base-uncased'
         lower_case = True
         model_name = "BERT"
     elif args.model_no == 1:
-        from ..model.ALBERT.tokenization_albert import (
+        from model.albert.albert_tokenizer import (
             AlbertTokenizer as Tokenizer,
         )
 
         model = args.model_size  #'albert-base-v2'
         lower_case = True
-        model_name = "ALBERT"
+        model_name = "BERT"
     elif args.model_no == 2:
-        from ..model.BERT.tokenization_bert import BertTokenizer as Tokenizer
+        from model.bert.bert_tokenizer import BertTokenizer as Tokenizer
 
         model = "bert-base-uncased"
         lower_case = False
@@ -415,7 +415,7 @@ def load_dataloaders(args):
 
     if os.path.isfile("./data/%s_tokenizer.pkl" % model_name):
         tokenizer = load_pickle("%s_tokenizer.pkl" % model_name)
-        logger.info("Loaded tokenizer from pre-trained blanks models")
+        logger.info("Loaded tokenizer from pre-trained blanks model")
     else:
         logger.info(
             "Pre-trained blanks tokenizer not found, initializing new tokenizer..."
