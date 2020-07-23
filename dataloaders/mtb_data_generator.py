@@ -56,7 +56,7 @@ class MTBGenerator(Dataset):
         """
         Create a generator that iterate over the Sequence.
         """
-        yield from (item for item in [self[i] for i in range(len(self))])
+        yield from (item for item in (self[i] for i in range(len(self))))
 
     def __len__(self):
         return len(self.r_entities_map) - 1
@@ -69,11 +69,11 @@ class MTBGenerator(Dataset):
         r0, r1, r2 = r
         r0 = np.array(r0)
         if blank_e1 >= alpha:
-            r0[np.array(r1)] = self.blank_idx
+            r0[r1[0] : (r1[1] + 1)] = self.blank_idx
             e1 = "[BLANK]"
 
         if blank_e2 >= alpha ** 2:
-            r0[np.array(r2)] = self.blank_idx
+            r0[r2[0] : (r2[1] + 1)] = self.blank_idx
             e2 = "[BLANK]"
         r = (r0, r1, r2)
         return (r, e1, e2)
@@ -81,10 +81,9 @@ class MTBGenerator(Dataset):
     def _mask_sequence(self, data):
         mask_probability = 0.15
         (x, s1, s2), e1, e2 = data
-
-        forbidden_idxs = [min(s1) - 1] + np.unique(s1).tolist() + [max(s1) + 1]
-        forbidden_idxs += (
-            [min(s2) - 1] + np.unique(s2).tolist() + [max(s2) + 1]
+        forbidden_idxs = set(np.arange(max(s1[0] - 1, 0), s1[1] + 2))
+        forbidden_idxs = forbidden_idxs.union(
+            set(np.arange(max(s2[0] - 1, 0), s2[1] + 2))
         )
 
         pool_idxs = [i for i in range(len(x)) if i not in forbidden_idxs]
@@ -103,7 +102,6 @@ class MTBGenerator(Dataset):
             self.mask_idx if mask else token
             for token, mask in zip(x, mask_label)
         ]
-
         e1_start = s1[0] - 1
         e2_start = s2[0] - 1
         entities_start = np.array([e1_start, e2_start])
@@ -141,7 +139,6 @@ class MTBGenerator(Dataset):
             size=min(int(self.batch_size // 2), len(negatives)),
             replace=False,
         )
-        q = 1 / len(negatives)
 
         batch = []
 
@@ -150,13 +147,7 @@ class MTBGenerator(Dataset):
         for _pos_idx, pos_row in pos_df.iterrows():
             e1_e2_start, masked_for_pred, x = self._preprocess(pos_row)
             batch.append(
-                (
-                    x,
-                    masked_for_pred,
-                    e1_e2_start,
-                    torch.FloatTensor([1.0]),
-                    torch.LongTensor([1]),
-                )
+                (x, masked_for_pred, e1_e2_start, torch.LongTensor([1]))
             )
 
         # process negative samples
@@ -164,40 +155,36 @@ class MTBGenerator(Dataset):
         for _neg_idx, neg_row in negs_df.iterrows():
             e1_e2_start, masked_for_pred, x = self._preprocess(neg_row)
             batch.append(
-                (
-                    x,
-                    masked_for_pred,
-                    e1_e2_start,
-                    torch.FloatTensor([q]),
-                    torch.LongTensor([0]),
-                )
+                (x, masked_for_pred, e1_e2_start, torch.LongTensor([0]))
             )
 
         return self._wrap_batch(batch)
 
     def _wrap_batch(self, batch):
         sorted_batch = sorted(batch, key=lambda x: x[0].shape[0], reverse=True)
-        seqs = [x[0] for x in sorted_batch]
-        seqs_padded = pad_sequence(
-            seqs, batch_first=True, padding_value=self.tokenizer.pad_token_id
+        sequences = [x[0] for x in sorted_batch]
+        sequences = pad_sequence(
+            sequences,
+            batch_first=True,
+            padding_value=self.tokenizer.pad_token_id,
         )
-        labels = list(map(lambda x: x[1], sorted_batch))
-        labels_padded = pad_sequence(
-            labels, batch_first=True, padding_value=self.tokenizer.pad_token_id
+        mask_for_pred = list(map(lambda x: x[1], sorted_batch))
+        mask_for_pred = pad_sequence(
+            mask_for_pred,
+            batch_first=True,
+            padding_value=self.tokenizer.pad_token_id,
         )
-        labels2 = list(map(lambda x: x[2], sorted_batch))
-        labels2_padded = pad_sequence(
-            labels2, batch_first=True, padding_value=-1
+        e1_e2_start = list(map(lambda x: x[2], sorted_batch))
+        e1_e2_start = pad_sequence(
+            e1_e2_start, batch_first=True, padding_value=-1
         )
-        labels4 = list(map(lambda x: x[4], sorted_batch))
-        labels4_padded = pad_sequence(
-            labels4, batch_first=True, padding_value=-1
-        )
+        labels = list(map(lambda x: x[3], sorted_batch))
+        labels = pad_sequence(labels, batch_first=True, padding_value=-1)
         return (
-            seqs_padded,
-            labels_padded,
-            labels2_padded,
-            labels4_padded,
+            sequences,
+            mask_for_pred,
+            e1_e2_start,
+            labels,
         )
 
     def _preprocess(self, row):
