@@ -376,10 +376,10 @@ class Pretrainer:
         neg_logits = torch.stack(neg_logits, dim=0)
         neg_labels = [0.0 for _ in range(neg_logits.shape[0])]
 
-        blank_labels_ = torch.FloatTensor(pos_labels + neg_labels)
+        blank_labels = torch.FloatTensor(pos_labels + neg_labels)
         blank_pred = torch.cat([pos_logits, neg_logits], dim=0)
         bce = nn.BCEWithLogitsLoss(reduction="mean")(
-            blank_pred.detach().cpu(), blank_labels_.detach().cpu()
+            blank_pred.detach().cpu(), blank_labels.detach().cpu()
         )
 
         return lm_accuracy, bce.numpy()
