@@ -25,7 +25,7 @@ logger = logging.getLogger(__file__)
 
 def load_state(net, optimizer, scheduler, args, load_best=False):
     """
-    Loads saved models and optimizer states if exists.
+    Loads saved model and optimizer states if exists.
     """
     base_path = "./data/"
     amp_checkpoint = None
@@ -38,10 +38,10 @@ def load_state(net, optimizer, scheduler, args, load_best=False):
     start_epoch, best_pred, checkpoint = 0, 0, None
     if (load_best == True) and os.path.isfile(best_path):
         checkpoint = torch.load(best_path)
-        logger.info("Loaded best models.")
+        logger.info("Loaded best model.")
     elif os.path.isfile(checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
-        logger.info("Loaded checkpoint models.")
+        logger.info("Loaded checkpoint model.")
     if checkpoint != None:
         start_epoch = checkpoint["epoch"]
         best_pred = checkpoint["best_acc"]
@@ -51,7 +51,7 @@ def load_state(net, optimizer, scheduler, args, load_best=False):
         if scheduler is not None:
             scheduler.load_state_dict(checkpoint["scheduler"])
         amp_checkpoint = checkpoint["amp"]
-        logger.info("Loaded models and optimizer.")
+        logger.info("Loaded model and optimizer.")
     return start_epoch, best_pred, amp_checkpoint
 
 
