@@ -10,7 +10,7 @@ import spacy
 import torch
 from ml_utils.normalizer import Normalizer
 from torch.nn.utils.rnn import pad_sequence
-from transformers import AlbertTokenizer
+from transformers import AlbertTokenizer, BertTokenizer
 
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_generator import MTBGenerator
@@ -33,30 +33,7 @@ class MTBPretrainDataLoader:
         self.config = config
         transformer = self.config.get("transformer")
 
-        tokenizer_path = "data/{0}_tokenizer.pkl".format(transformer)
-        if os.path.isfile(tokenizer_path):
-            with open(tokenizer_path, "rb") as pkl_file:
-                self.tokenizer = joblib.load(pkl_file)
-            logger.info("Loaded tokenizer from saved path.")
-        else:
-            self.tokenizer = AlbertTokenizer.from_pretrained(
-                transformer, do_lower_case=False
-            )
-            self.tokenizer.add_tokens(
-                ["[E1]", "[/E1]", "[E2]", "[/E2]", "[BLANK]"]
-            )
-            with open(tokenizer_path, "wb") as output:
-                joblib.dump(self.tokenizer, output)
-
-            logger.info(
-                "Saved {0} tokenizer at {1}".format(
-                    transformer, tokenizer_path
-                )
-            )
-        e1_id = self.tokenizer.convert_tokens_to_ids("[E1]")
-        e2_id = self.tokenizer.convert_tokens_to_ids("[E2]")
-        if e1_id == e2_id:
-            raise ValueError("E1 token equals E2 token")
+        self.tokenizer = self.load_tokenizer(transformer)
 
         self.cls_token = self.tokenizer.cls_token
         self.sep_token = self.tokenizer.sep_token
@@ -77,6 +54,39 @@ class MTBPretrainDataLoader:
             dataset="validation",
         )
 
+    def load_tokenizer(self, transformer: str):
+        """
+        Loads the tokenizer based on th given transformer name.
+
+        Args:
+            transformer: Name of huggingface transformer
+        """
+        tokenizer_path = "data/{0}_tokenizer.pkl".format(transformer)
+        if os.path.isfile(tokenizer_path):
+            logger.info("Loading tokenizer from saved path.")
+            with open(tokenizer_path, "rb") as pkl_file:
+                return joblib.load(pkl_file)
+        elif "albert" in transformer:
+            tokenizer = AlbertTokenizer.from_pretrained(
+                transformer, do_lower_case=False
+            )
+        else:
+            tokenizer = BertTokenizer.from_pretrained(
+                transformer, do_lower_case=False, add_special_tokens=True
+            )
+        tokenizer.add_tokens(["[E1]", "[/E1]", "[E2]", "[/E2]", "[BLANK]"])
+        with open(tokenizer_path, "wb") as output:
+            joblib.dump(tokenizer, output)
+
+        logger.info(
+            "Saved {0} tokenizer at {1}".format(transformer, tokenizer_path)
+        )
+        e1_id = tokenizer.convert_tokens_to_ids("[E1]")
+        e2_id = tokenizer.convert_tokens_to_ids("[E2]")
+        if e1_id == e2_id:
+            raise ValueError("E1 token equals E2 token")
+        return tokenizer
+
     def load_dataset(self):
         """
         Load the data defined in the configuration parameters.
@@ -84,7 +94,8 @@ class MTBPretrainDataLoader:
         data_path = self.config.get("data")
         data_file = os.path.basename(data_path)
         data_file_name = os.path.splitext(data_file)[0]
-        preprocessed_file = os.path.join("data", data_file_name + ".pkl")
+        file_name = "_".join([data_file_name, self.config.get("transformer")])
+        preprocessed_file = os.path.join("data", file_name + ".pkl")
 
         if os.path.isfile(preprocessed_file):
             logger.info("Loaded pre-training data from saved file")
