@@ -56,7 +56,9 @@ class MTBGenerator(Dataset):
         """
         Create a generator that iterate over the Sequence.
         """
-        yield from (item for item in [self[i] for i in range(len(self))])
+        yield from (
+            item for item in (self[i] for i in range(len(self)))
+        )  # noqa: WPS335
 
     def __len__(self):
         return len(self.r_entities_map) - 1

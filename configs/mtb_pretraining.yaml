@@ -1,5 +1,7 @@
+# Experiment
+experiment_name: real_positive_pools
 # Data
-data: data/cnn-local.txt #pre-training data.txt file path
+data: data/cnn.txt #pre-training data.txt file path
 entities_of_interest:
   - PERSON
   - NORP
@@ -16,6 +18,7 @@ normalization:
   - lowercase
   - html
   - urls
+min_pool_size: 2
 # Model
 transformer: bert-base-uncased
 # Training

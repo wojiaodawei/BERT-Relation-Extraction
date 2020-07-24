@@ -8,8 +8,10 @@ import numpy as np
 import pandas as pd
 import spacy
 import torch
+from ml_utils.common import valncreate_dir
 from ml_utils.normalizer import Normalizer
 from torch.nn.utils.rnn import pad_sequence
+from tqdm import tqdm
 from transformers import AlbertTokenizer, BertTokenizer
 
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
@@ -32,8 +34,8 @@ class MTBPretrainDataLoader:
         """
         self.config = config
         transformer = self.config.get("transformer")
-
-        self.tokenizer = self.load_tokenizer(transformer)
+        self.experiment_name = self.config.get("experiment_name")
+        self.tokenizer = MTBPretrainDataLoader.load_tokenizer(transformer)
 
         self.cls_token = self.tokenizer.cls_token
         self.sep_token = self.tokenizer.sep_token
@@ -54,7 +56,8 @@ class MTBPretrainDataLoader:
             dataset="validation",
         )
 
-    def load_tokenizer(self, transformer: str):
+    @classmethod
+    def load_tokenizer(cls, transformer: str):
         """
         Loads the tokenizer based on th given transformer name.
 
@@ -95,7 +98,9 @@ class MTBPretrainDataLoader:
         data_file = os.path.basename(data_path)
         data_file_name = os.path.splitext(data_file)[0]
         file_name = "_".join([data_file_name, self.config.get("transformer")])
-        preprocessed_file = os.path.join("data", file_name + ".pkl")
+        preprocessed_file = os.path.join(
+            "data", self.experiment_name, file_name + ".pkl"
+        )
 
         if os.path.isfile(preprocessed_file):
             logger.info("Loaded pre-training data from saved file")
@@ -131,7 +136,7 @@ class MTBPretrainDataLoader:
             )
             dataset = pd.DataFrame(dataset)
             dataset.columns = ["r", "e1", "e2"]
-
+            valncreate_dir(os.path.join("data", self.experiment_name))
             data = self.preprocess(dataset)
             with open(preprocessed_file, "wb") as output:
                 joblib.dump(data, output)
@@ -197,8 +202,7 @@ class MTBPretrainDataLoader:
         relation.append(self.tokenizer.sep_token)
         return relation
 
-    @classmethod
-    def transform_data(cls, df: pd.DataFrame):
+    def transform_data(self, df: pd.DataFrame):
         """
         Prepare data for the QQModel.
 
@@ -210,7 +214,7 @@ class MTBPretrainDataLoader:
         """
         df["relation_id"] = np.arange(0, len(df))
         logger.info("Generating class pools")
-        pools = MTBPretrainDataLoader.generate_entities_pools(df)
+        pools = self.generate_entities_pools(df)
         for idx, pool in enumerate(pools):
             if np.random.random() > 0.75:
                 pools[idx] = pool + ("validation",)
@@ -218,8 +222,7 @@ class MTBPretrainDataLoader:
                 pools[idx] = pool + ("train",)
         return pools
 
-    @classmethod
-    def generate_entities_pools(cls, data: pd.DataFrame):
+    def generate_entities_pools(self, data: pd.DataFrame):
         """
         Generate class pools.
 
@@ -233,7 +236,9 @@ class MTBPretrainDataLoader:
         """
         groups = data.groupby(["e1", "e2"])
         pool = []
-        for idx, df in groups:
+        for idx, df in tqdm(groups):
+            if len(df) < self.config.get("min_pool_size", 1):
+                continue
             e1, e2 = idx
             e1_negatives = data[((data["e1"] == e1) & (data["e2"] != e2))][
                 "relation_id"
