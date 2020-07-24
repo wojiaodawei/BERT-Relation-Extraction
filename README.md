@@ -4,27 +4,47 @@
 A PyTorch implementation of the models for the paper ["Matching the Blanks: Distributional Similarity for Relation Learning"](https://arxiv.org/pdf/1906.03158.pdf) published in ACL 2019.  
 
 Note: This is not an official repo for the paper.  
-Instead of using BERT this implementation uses ALBERT (https://arxiv.org/abs/1909.11942) for relation extraction.
 
-## Training by matching the blanks (ALBERT<sub>EM</sub> + MTB)
-Run pretraining.py with arguments below. Pre-training data can be any .txt continuous text file.  
+## Training by matching the blanks (BERT<sub>EM</sub> + MTB)
+Run pretraining.py with a YAML `--cong_file` containing the following arguments:
+
+```yaml
+# Data
+data: data/cnn.txt # pre-training data.txt file path
+entities_of_interest: # Entities of interest used for pretraining
+  - PERSON
+  - NORP
+  - FAC
+  - ORG
+  - GPE
+  - LOC
+  - PRODUCT
+  - EVENT
+  - WORK_OF_ART
+  - LAW
+  - LANGUAGE
+normalization: # How to normalize the pretraining corpus
+  - lowercase # Apply lowercase
+  - html # Strip HTML tags
+  - urls # Remove URLs
+# Model
+transformer: bert-base-uncased # weight initialization (Should be huggingface transformer mode)
+# Training
+batch_size: 32 # Training batch size
+gradient_acc_steps: 2 # steps of gradient accumulation
+max_norm: 1.0 # Clipped gradient norm
+epochs: 18 # Number of Epochs
+lr: 0.0001 # learning rate
+resume: False # Use this to resume the train job
+```
+
+Pre-training data can be any .txt continuous text file.  
 We use Spacy NLP to grab pairwise entities (within a window size of 40 tokens length) from the text to form relation statements for pre-training. Entities recognition are based on NER and dependency tree parsing of objects/subjects.  
 
 The pre-training data taken from CNN dataset (cnn.txt) can be downloaded [here.](https://drive.google.com/file/d/1aMiIZXLpO7JF-z_Zte3uH7OCo4Uk_0do/view?usp=sharing)   
 However, do note that the paper uses wiki dumps data for MTB pre-training which is much larger than the CNN dataset.   
 
 Note: Pre-training can take a long time, depending on available GPU. It is possible to directly fine-tune on the relation-extraction task and still get reasonable results, following the section below.  
-
-```bash
-main_pretraining.py [-h] 
-	[--pretrain_data TRAIN_PATH] 
-	[--batch_size BATCH_SIZE]
-	[--gradient_acc_steps GRADIENT_ACC_STEPS]
-	[--max_norm MAX_NORM]
-	[--fp16 FP_16]  
-	[--num_epochs NUM_EPOCHS]
-	[--lr LR]
-```
 
 ## Fine-tuning on SemEval2010 Task 8 (BERT<sub>EM</sub>/BERT<sub>EM</sub> + MTB)
 Run main_task.py with arguments below. Requires SemEval2010 Task 8 dataset, available [here.](https://github.com/sahitya0000/Relation-Classification/blob/master/corpus/SemEval2010_task8_all_data.zip) Download & unzip to ./data/ folder.

@@ -98,6 +98,7 @@ class Pretrainer:
         logger.info("Loading best model from {0}".format(best_model_path))
         checkpoint = torch.load(best_model_path)
         self.model.load_state_dict(checkpoint["state_dict"])
+        self.scheduler.load_state_dict(checkpoint["scheduler"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         return (
             checkpoint["epoch"],
