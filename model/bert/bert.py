@@ -47,7 +47,7 @@ class BertModel(BertPreTrainedModel):
             n_classes: Number of classes
 
         References:
-            `Attention is all you need`: https://arxiv.org/abs/1706.03762
+            Attention is all you need: https://arxiv.org/abs/1706.03762
         """
         super(BertModel, self).__init__(config)
         self.config = config
@@ -60,14 +60,14 @@ class BertModel(BertPreTrainedModel):
 
         self.init_weights()
 
-        print("Model config: ", self.config)
+        logger.info("Model config: ", self.config)
         if self.task is None:
             # blanks head
             self.activation = nn.Tanh()
             # LM head
-            self.lm_classificattion = BertOnlyMLMHead(config)
+            self.cls = BertOnlyMLMHead(config)
         elif self.task == "classification":
-            self.n_classes_ = n_classes
+            self.n_classes = n_classes
             if self.model_size == "bert-base-uncased":
                 self.classification_layer = nn.Linear(1536, n_classes)
             elif self.model_size == "bert-large-uncased":
@@ -83,12 +83,14 @@ class BertModel(BertPreTrainedModel):
         """
         Prunes heads of the model.
 
+        See base class PreTrainedModel
+
         Args:
             heads_to_prune: dict of {layer_num: list of heads to prune in this layer}
-            See base class PreTrainedModel
         """
+        encoder_layer = self.encoder.layer
         for layer, heads in heads_to_prune.items():
-            self.encoder.layer[layer].attention.prune_heads(heads)
+            encoder_layer[layer].attention.prune_heads(heads)
 
     def forward(
         self,
@@ -146,7 +148,8 @@ class BertModel(BertPreTrainedModel):
                 ``1`` for tokens that are NOT MASKED, ``0`` for MASKED tokens.
             output_attentions (:obj:`bool`, `optional`, defaults to :obj:`None`):
                 If set to ``True``, the attentions tensors of all attention layers are returned. See ``attentions`` under returned tensors for more detail.
-
+            output_hidden_states: Output_hidden state
+            e1_e2_start: Start of entity1 and entity2 markers.
         Returns:
             :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.BertConfig`) and inputs:
             last_hidden_state (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`):
@@ -273,7 +276,7 @@ class BertModel(BertPreTrainedModel):
 
         if self.task is None:
             blanks_logits = self.activation(v1v2)
-            lm_logits = self.lm_classificattion(sequence_output)
+            lm_logits = self.cls(sequence_output)
             return blanks_logits, lm_logits
         elif self.task == "classification":
             classification_logits = self.classification_layer(v1v2)
