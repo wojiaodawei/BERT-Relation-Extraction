@@ -56,7 +56,7 @@ class MTBGenerator(Dataset):
         """
         Create a generator that iterate over the Sequence.
         """
-        yield from (item for item in (self[i] for i in range(len(self))))
+        yield from (item for item in [self[i] for i in range(len(self))])
 
     def __len__(self):
         return len(self.r_entities_map) - 1
@@ -68,11 +68,11 @@ class MTBGenerator(Dataset):
         blank_e2 = np.random.uniform()
         r0, r1, r2 = r
         r0 = np.array(r0)
-        if blank_e1 >= alpha:
+        if blank_e1 < alpha:
             r0[r1[0] : (r1[1] + 1)] = self.blank_idx
             e1 = "[BLANK]"
 
-        if blank_e2 >= alpha ** 2:
+        if blank_e2 <= alpha ** 2:
             r0[r2[0] : (r2[1] + 1)] = self.blank_idx
             e2 = "[BLANK]"
         r = (r0, r1, r2)

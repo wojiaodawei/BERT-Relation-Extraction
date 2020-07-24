@@ -82,6 +82,10 @@ class Pretrainer:
         self._train_lm_acc = []
         self._lm_acc = []
         self._mtb_bce = []
+        self.checkpoint_dir = os.path.join(
+            "models", "pretraining", self.transformer
+        )
+        valncreate_dir(self.checkpoint_dir)
 
     def load_best_model(self, checkpoint_dir: str):
         """
@@ -106,11 +110,9 @@ class Pretrainer:
         """
         Runs the training.
         """
-        checkpoint_dir = os.path.join(
-            "models", "pretraining", self.transformer
+        best_model_path = os.path.join(
+            self.checkpoint_dir, "best_model.pth.tar"
         )
-        valncreate_dir(checkpoint_dir)
-        best_model_path = os.path.join(checkpoint_dir, "best_model.pth.tar")
         resume = self.config.get("resume", False)
         if resume and os.path.exists(best_model_path):
             (
@@ -118,110 +120,12 @@ class Pretrainer:
                 self._best_mtb_bce,
                 self._train_loss,
                 self._train_lm_acc,
-            ) = self.load_best_model(checkpoint_dir)
+            ) = self.load_best_model(self.checkpoint_dir)
 
         logger.info("Starting training process")
-        pad_id = self.tokenizer.pad_token_id
         update_size = len(self.data_loader.train_generator) // 10
         for epoch in range(self._start_epoch, self.config.get("epochs")):
-            start_time = time.time()
-            self.model.train()
-            train_loss = 0.0
-            train_loss_per_batch = []
-            train_acc = 0.0
-            train_lm_acc_per_batch = []
-            train_mtb_bce = 0.0
-            train_mtb_bce_per_batch = []
-            for i, data in enumerate(self.data_loader.train_generator):
-                sequence, masked_label, e1_e2_start, blank_labels = data
-                masked_label = masked_label[(masked_label != pad_id)]
-                if masked_label.shape[0] == 0:
-                    continue
-                if self.train_on_gpu:
-                    masked_label = masked_label.cuda()
-                blanks_logits, lm_logits = self._get_logits(
-                    e1_e2_start, sequence
-                )
-
-                if lm_logits.size(0) != masked_label.size(0):
-                    blanks_logits, lm_logits = self._get_logits(
-                        e1_e2_start, sequence
-                    )
-
-                loss = self.criterion(
-                    lm_logits, blanks_logits, masked_label, blank_labels,
-                )
-                loss = loss / self.gradient_acc_steps
-
-                loss.backward()
-
-                clip_grad_norm_(
-                    self.model.parameters(), self.config.get("max_norm")
-                )
-
-                if (i % self.gradient_acc_steps) == 0:
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
-
-                train_loss += loss.item()
-                train_metrics = self.calculate_metrics(
-                    lm_logits, blanks_logits, masked_label, blank_labels,
-                )
-                train_acc += train_metrics[0]
-                train_mtb_bce += train_metrics[1]
-                if (i % update_size) == (update_size - 1):
-                    train_loss_per_batch.append(
-                        self.gradient_acc_steps * train_loss / update_size
-                    )
-                    train_lm_acc_per_batch.append(train_acc / update_size)
-                    train_mtb_bce_per_batch.append(train_mtb_bce / update_size)
-                    logger.info(
-                        "Epoch {0} - {1}/{2} points]:".format(
-                            epoch + 1, (i + 1), self.train_len
-                        )
-                    )
-                    logger.info(
-                        "Train loss: {0}, Train LM accuracy: {1}, Train MTB Binary Cross Entropy {2}".format(
-                            train_loss_per_batch[-1],
-                            train_lm_acc_per_batch[-1],
-                            train_mtb_bce_per_batch[-1],
-                        )
-                    )
-                    train_loss = 0.0
-                    train_acc = 0.0
-                    train_mtb_bce = 0.0
-
-            eval_result = self.evaluate()
-            self._lm_acc += [eval_result[0]]
-            self._mtb_bce += [eval_result[1]]
-
-            self.scheduler.step()
-            self._train_loss.append(np.mean(train_loss_per_batch))
-            self._train_lm_acc.append(np.mean(train_lm_acc_per_batch))
-            logger.info(
-                "Epoch finished, took {0} seconds.".format(
-                    time.time() - start_time
-                )
-            )
-            logger.info("Loss at Epoch {0}".format(epoch + 1))
-            logger.info("Loss: {0}".format(self._train_loss[-1]))
-            logger.info(
-                "Train LM Accuracy: {0}".format(self._train_lm_acc[-1])
-            )
-            logger.info("Validation LM Accuracy: {0}".format(self._lm_acc[-1]))
-            logger.info(
-                "Validation MTB Binary Cross Entropy: {0}".format(
-                    self._mtb_bce[-1]
-                )
-            )
-
-            if self._mtb_bce[-1] < self._best_mtb_bce:
-                self._best_mtb_bce = self._mtb_bce[-1]
-                self._save_model(checkpoint_dir, epoch, best_model=True)
-
-            self._save_model(
-                checkpoint_dir, epoch,
-            )
+            self._train_epoch(epoch, update_size)
 
         logger.info("Finished Training!")
         fig = plt.figure(figsize=(20, 20))
@@ -247,6 +151,99 @@ class Pretrainer:
         plt.savefig(os.path.join("./data/", "accuracy_vs_epoch_ALBERT.png"))
 
         return self.model
+
+    def _train_epoch(self, epoch, update_size):
+        logger.info("Starting epoch {0}".format(epoch + 1))
+        start_time = time.time()
+
+        self.model.train()
+
+        train_loss = 0.0
+        train_acc = 0.0
+        train_mtb_bce = 0.0
+        train_loss_per_batch = []
+        train_lm_acc_per_batch = []
+        train_mtb_bce_per_batch = []
+
+        for i, data in enumerate(self.data_loader.train_generator):
+            sequence, masked_label, e1_e2_start, blank_labels = data
+            do_updates = (i % self.gradient_acc_steps) == 0
+            res = self._train_on_batch(
+                sequence, masked_label, e1_e2_start, blank_labels, do_updates
+            )
+            if res[0]:
+                train_loss = res[0]
+                train_acc = res[1]
+                train_mtb_bce = res[2]
+            if (i % update_size) == (update_size - 1):
+                train_loss_per_batch.append(
+                    self.gradient_acc_steps * train_loss / update_size
+                )
+                train_lm_acc_per_batch.append(train_acc / update_size)
+                train_mtb_bce_per_batch.append(train_mtb_bce / update_size)
+                logger.info(
+                    "{0}/{1} points: - ".format((i + 1), self.train_len)
+                    + "Train loss: {0}, Train LM accuracy: {1}, Train MTB Binary Cross Entropy {2}".format(
+                        train_loss_per_batch[-1],
+                        train_lm_acc_per_batch[-1],
+                        train_mtb_bce_per_batch[-1],
+                    )
+                )
+        eval_result = self.evaluate()
+        self._lm_acc += [eval_result[0]]
+        self._mtb_bce += [eval_result[1]]
+        self.scheduler.step()
+        self._train_loss.append(np.mean(train_loss_per_batch))
+        self._train_lm_acc.append(np.mean(train_lm_acc_per_batch))
+        logger.info(
+            "Epoch {0} finished, took {1} seconds.".format(
+                epoch, time.time() - start_time
+            )
+        )
+        logger.info("Loss: {0}".format(self._train_loss[-1]))
+        logger.info("Train LM Accuracy: {0}".format(self._train_lm_acc[-1]))
+        logger.info("Validation LM Accuracy: {0}".format(self._lm_acc[-1]))
+        logger.info(
+            "Validation MTB Binary Cross Entropy: {0}".format(
+                self._mtb_bce[-1]
+            )
+        )
+        if self._mtb_bce[-1] < self._best_mtb_bce:
+            self._best_mtb_bce = self._mtb_bce[-1]
+            self._save_model(self.checkpoint_dir, epoch, best_model=True)
+        self._save_model(
+            self.checkpoint_dir, epoch,
+        )
+
+    def _train_on_batch(
+        self,
+        sequence,
+        masked_label,
+        e1_e2_start,
+        blank_labels,
+        do_update: bool = True,
+    ):
+        masked_label = masked_label[
+            (masked_label != self.tokenizer.pad_token_id)
+        ]
+        if masked_label.shape[0] == 0:
+            return None, None, None
+        if self.train_on_gpu:
+            masked_label = masked_label.cuda()
+        blanks_logits, lm_logits = self._get_logits(e1_e2_start, sequence)
+        loss = self.criterion(
+            lm_logits, blanks_logits, masked_label, blank_labels,
+        )
+        loss = loss / self.gradient_acc_steps
+        loss.backward()
+        clip_grad_norm_(self.model.parameters(), self.config.get("max_norm"))
+        if do_update:
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+        train_metrics = self.calculate_metrics(
+            lm_logits, blanks_logits, masked_label, blank_labels,
+        )
+        return loss.item(), train_metrics[0], train_metrics[1]
 
     def _save_model(self, path, epoch, best_model: bool = False):
         if best_model:
@@ -290,7 +287,6 @@ class Pretrainer:
         """
         Run the validation generator and return performance metrics.
         """
-        pad_id = self.tokenizer.pad_token_id
         total_loss = []
         lm_acc = []
         blanks_mse = []
@@ -299,7 +295,9 @@ class Pretrainer:
         with torch.no_grad():
             for data in self.data_loader.validation_generator:
                 (x, masked_label, e1_e2_start, blank_labels) = data
-                masked_label = masked_label[(masked_label != pad_id)]
+                masked_label = masked_label[
+                    (masked_label != self.tokenizer.pad_token_id)
+                ]
                 if masked_label.shape[0] == 0:
                     continue
                 if self.train_on_gpu:
@@ -341,12 +339,8 @@ class Pretrainer:
             / len(masked_for_pred)
         ).item()
 
-        pos_idxs = [
-            i for i, l in enumerate(blank_labels.squeeze().tolist()) if l == 1
-        ]
-        neg_idxs = [
-            i for i, l in enumerate(blank_labels.squeeze().tolist()) if l == 0
-        ]
+        pos_idxs = np.where(blank_labels == 1)[0]
+        neg_idxs = np.where(blank_labels == 0)[0]
 
         if len(pos_idxs) > 1:
             # positives

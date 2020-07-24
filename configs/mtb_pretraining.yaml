@@ -1,5 +1,5 @@
 # Data
-data: data/cnn.txt #pre-training data.txt file path
+data: data/cnn-local.txt #pre-training data.txt file path
 entities_of_interest:
   - PERSON
   - NORP
