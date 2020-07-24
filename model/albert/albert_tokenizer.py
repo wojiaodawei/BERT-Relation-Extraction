@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Tokenization classes for ALBERT models.
+Tokenization classes for ALBERT model.
 """
 
 
@@ -22,10 +22,10 @@ import os
 import unicodedata
 from shutil import copyfile
 
-from .tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils import PreTrainedTokenizer
 
 logger = logging.getLogger(__name__)
-VOCAB_FILES_NAMES = {"vocab_file": "spiece.models"}
+VOCAB_FILES_NAMES = {"vocab_file": "spiece.model"}
 
 PRETRAINED_VOCAB_FILES_MAP = {
     "vocab_file": {
@@ -211,7 +211,7 @@ class AlbertTokenizer(PreTrainedTokenizer):
 
     def build_inputs_with_special_tokens(self, token_ids_0, token_ids_1=None):
         """
-        Build models inputs from a sequence or a pair of sequence for sequence
+        Build model inputs from a sequence or a pair of sequence for sequence
         classification tasks by concatenating and adding special tokens.
 
         An ALBERT sequence has the following format:     single
@@ -237,7 +237,7 @@ class AlbertTokenizer(PreTrainedTokenizer):
             token_ids_1: Optional list of ids (must not contain special tokens), necessary when fetching sequence ids
                 for sequence pairs
             already_has_special_tokens: (default False) Set to True if the token list is already formated with
-                special tokens for the models
+                special tokens for the model
 
         Returns:
             A list of integers in the range [0, 1]: 0 for a special token, 1 for a sequence token.
@@ -247,7 +247,7 @@ class AlbertTokenizer(PreTrainedTokenizer):
             if token_ids_1 is not None:
                 raise ValueError(
                     "You should not supply a second sequence if the provided sequence of "
-                    "ids is already formated with special tokens for the models."
+                    "ids is already formated with special tokens for the model."
                 )
             return list(
                 map(

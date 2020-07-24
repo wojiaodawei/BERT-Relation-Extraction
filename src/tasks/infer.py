@@ -63,11 +63,11 @@ class infer_from_trained(object):
             "PER",
         ]
 
-        logger.info("Loading tokenizer and models...")
+        logger.info("Loading tokenizer and model...")
         from .train_funcs import load_state
 
         if self.args.model_no == 0:
-            from ..model.BERT.modeling_bert import BertModel as Model
+            from model.bert.bert import BertModel as Model
 
             model = args.model_size  #'bert-base-uncased'
             model_name = "BERT"
@@ -79,10 +79,10 @@ class infer_from_trained(object):
                 n_classes_=self.args.num_classes,
             )
         elif self.args.model_no == 1:
-            from ..model.ALBERT.modeling_albert import AlbertModel as Model
+            from model.albert.albert import AlbertModel as Model
 
             model = args.model_size  #'albert-base-v2'
-            model_name = "ALBERT"
+            model_name = "BERT"
             self.net = Model.from_pretrained(
                 model,
                 force_download=False,
@@ -91,7 +91,7 @@ class infer_from_trained(object):
                 n_classes_=self.args.num_classes,
             )
         elif args.model_no == 2:  # BioBert
-            from ..model.BERT.modeling_bert import BertConfig, BertModel
+            from model.bert.bert import BertModel, BertConfig
 
             model = "bert-base-uncased"
             model_name = "BioBERT"
@@ -285,10 +285,8 @@ class FewRel(object):
         self.cuda = torch.cuda.is_available()
 
         if self.args.model_no == 0:
-            from ..model.BERT.modeling_bert import BertModel as Model
-            from ..model.BERT.tokenization_bert import (
-                BertTokenizer as Tokenizer,
-            )
+            from model.bert.bert import BertModel as Model
+            from model.bert.bert_tokenizer import BertTokenizer as Tokenizer
 
             model = args.model_size  #'bert-large-uncased' 'bert-base-uncased'
             model_name = "BERT"
@@ -299,13 +297,13 @@ class FewRel(object):
                 task="fewrel",
             )
         elif self.args.model_no == 1:
-            from ..model.ALBERT.modeling_albert import AlbertModel as Model
-            from ..model.ALBERT.tokenization_albert import (
+            from model.albert.albert import AlbertModel as Model
+            from model.albert.albert_tokenizer import (
                 AlbertTokenizer as Tokenizer,
             )
 
             model = args.model_size  #'albert-base-v2'
-            model_name = "ALBERT"
+            model_name = "BERT"
             self.net = Model.from_pretrained(
                 model,
                 force_download=False,
@@ -313,10 +311,8 @@ class FewRel(object):
                 task="fewrel",
             )
         elif args.model_no == 2:  # BioBert
-            from ..model.BERT.modeling_bert import BertConfig, BertModel
-            from ..model.BERT.tokenization_bert import (
-                BertTokenizer as Tokenizer,
-            )
+            from model.bert.bert import BertModel, BertConfig
+            from model.bert.bert_tokenizer import BertTokenizer as Tokenizer
 
             model = "bert-base-uncased"
             model_name = "BioBERT"
@@ -364,7 +360,7 @@ class FewRel(object):
 
         if self.args.use_pretrained_blanks == 1:
             logger.info(
-                "Loading models pre-trained on blanks at ./data/test_checkpoint_%d.pth.tar..."
+                "Loading model pre-trained on blanks at ./data/test_checkpoint_%d.pth.tar..."
                 % args.model_no
             )
             checkpoint_path = (
