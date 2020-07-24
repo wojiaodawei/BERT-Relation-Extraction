@@ -50,9 +50,6 @@ class Two_Headed_Loss(nn.Module):
             p = factor * torch.dot(f1_vec, f2_vec)
         return p
 
-    def dot_(self, f1_vec, f2_vec):
-        return -torch.dot(f1_vec, f2_vec)
-
     def forward(
         self, lm_logits, blank_logits, lm_labels, blank_labels, verbose=False
     ):
@@ -112,52 +109,3 @@ class Two_Headed_Loss(nn.Module):
 
         total_loss = lm_loss + blank_loss
         return total_loss
-
-
-def evaluate_(
-    lm_logits,
-    blanks_logits,
-    masked_for_pred,
-    blank_labels,
-    tokenizer,
-    print_=True,
-):
-    """
-    evaluate must be called after loss.backward()
-    """
-    # lm_logits
-    lm_logits_pred_ids = torch.softmax(lm_logits, dim=-1).max(1)[1]
-    lm_accuracy = (
-        (lm_logits_pred_ids == masked_for_pred).sum().float()
-        / len(masked_for_pred)
-    ).item()
-
-    if print_:
-        print("Predicted masked tokens: \n")
-        print(
-            tokenizer.decode(
-                lm_logits_pred_ids.cpu().numpy()
-                if lm_logits_pred_ids.is_cuda
-                else lm_logits_pred_ids.numpy()
-            )
-        )
-        print("\nMasked labels tokens: \n")
-        print(
-            tokenizer.decode(
-                masked_for_pred.cpu().numpy()
-                if masked_for_pred.is_cuda
-                else masked_for_pred.numpy()
-            )
-        )
-
-    """
-    # blanks
-    blanks_diff = ((blanks_logits - blank_labels)**2).detach().cpu().numpy().sum() if blank_labels.is_cuda else\
-                    ((blanks_logits - blank_labels)**2).detach().numpy().sum()
-    blanks_mse = blanks_diff/len(blank_labels)
-    
-    if print_:
-        print("Blanks MSE: ", blanks_mse)
-    """
-    blanks_mse = 0
-    return lm_accuracy, blanks_mse
