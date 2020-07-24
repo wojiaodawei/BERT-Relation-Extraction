@@ -15,7 +15,7 @@ import re
 import pandas as pd
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from ..misc import load_pickle, save_as_pickle
@@ -54,45 +54,6 @@ def process_text(text, mode="train"):
         relations.append(relation), comments.append(comment)
         blanks.append(blank)
     return sents, relations, comments, blanks
-
-
-def preprocess_semeval2010_8(args):
-    """
-    Data preprocessing for SemEval2010 task 8 dataset.
-    """
-    data_path = (
-        args.train_data
-    )  #'./data/SemEval2010_task8_all_data/SemEval2010_task8_training/TRAIN_FILE.TXT'
-    logger.info("Reading training file %s..." % data_path)
-    with open(data_path, "r", encoding="utf8") as f:
-        text = f.readlines()
-
-    sents, relations, comments, blanks = process_text(text, "train")
-    df_train = pd.DataFrame(data={"sents": sents, "relations": relations})
-
-    data_path = (
-        args.test_data
-    )  #'./data/SemEval2010_task8_all_data/SemEval2010_task8_testing_keys/TEST_FILE_FULL.TXT'
-    logger.info("Reading test file %s..." % data_path)
-    with open(data_path, "r", encoding="utf8") as f:
-        text = f.readlines()
-
-    sents, relations, comments, blanks = process_text(text, "test")
-    df_test = pd.DataFrame(data={"sents": sents, "relations": relations})
-
-    rm = Relations_Mapper(df_train["relations"])
-    save_as_pickle("relations.pkl", rm)
-    df_test["relations_id"] = df_test.progress_apply(
-        lambda x: rm.rel2idx[x["relations"]], axis=1
-    )
-    df_train["relations_id"] = df_train.progress_apply(
-        lambda x: rm.rel2idx[x["relations"]], axis=1
-    )
-    save_as_pickle("df_train.pkl", df_train)
-    save_as_pickle("df_test.pkl", df_test)
-    logger.info("Finished and saved!")
-
-    return df_train, df_test, rm
 
 
 class Relations_Mapper(object):
@@ -165,39 +126,6 @@ def get_e1e2_start(x, e1_id, e2_id):
         e1_e2_start = None
         print(e)
     return e1_e2_start
-
-
-class semeval_dataset(Dataset):
-    def __init__(self, df, tokenizer, e1_id, e2_id):
-        self.e1_id = e1_id
-        self.e2_id = e2_id
-        self.df = df
-        logger.info("Tokenizing data...")
-        self.df["input"] = self.df.progress_apply(
-            lambda x: tokenizer.encode(x["sents"]), axis=1
-        )
-
-        self.df["e1_e2_start"] = self.df.progress_apply(
-            lambda x: get_e1e2_start(
-                x["input"], e1_id=self.e1_id, e2_id=self.e2_id
-            ),
-            axis=1,
-        )
-        print(
-            "\nInvalid rows/total: %d/%d"
-            % (df["e1_e2_start"].isnull().sum(), len(df))
-        )
-        self.df.dropna(axis=0, inplace=True)
-
-    def __len__(self,):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        return (
-            torch.LongTensor(self.df.iloc[idx]["input"]),
-            torch.LongTensor(self.df.iloc[idx]["e1_e2_start"]),
-            torch.LongTensor([self.df.iloc[idx]["relations_id"]]),
-        )
 
 
 def preprocess_fewrel(args, do_lower_case=True):
@@ -399,9 +327,7 @@ def load_dataloaders(args):
         lower_case = True
         model_name = "BERT"
     elif args.model_no == 1:
-        from model.albert.albert_tokenizer import (
-            AlbertTokenizer as Tokenizer,
-        )
+        from model.albert.albert_tokenizer import AlbertTokenizer as Tokenizer
 
         model = args.model_size  #'albert-base-v2'
         lower_case = True
@@ -439,52 +365,7 @@ def load_dataloaders(args):
     e2_id = tokenizer.convert_tokens_to_ids("[E2]")
     assert e1_id != e2_id != 1
 
-    if args.task == "semeval":
-        relations_path = "./data/relations.pkl"
-        train_path = "./data/df_train.pkl"
-        test_path = "./data/df_test.pkl"
-        if (
-            os.path.isfile(relations_path)
-            and os.path.isfile(train_path)
-            and os.path.isfile(test_path)
-        ):
-            rm = load_pickle("relations.pkl")
-            df_train = load_pickle("df_train.pkl")
-            df_test = load_pickle("df_test.pkl")
-            logger.info("Loaded preproccessed data.")
-        else:
-            df_train, df_test, rm = preprocess_semeval2010_8(args)
-
-        train_set = semeval_dataset(
-            df_train, tokenizer=tokenizer, e1_id=e1_id, e2_id=e2_id
-        )
-        test_set = semeval_dataset(
-            df_test, tokenizer=tokenizer, e1_id=e1_id, e2_id=e2_id
-        )
-        train_length = len(train_set)
-        test_length = len(test_set)
-        PS = Pad_Sequence(
-            seq_pad_value=tokenizer.pad_token_id,
-            label_pad_value=tokenizer.pad_token_id,
-            label2_pad_value=-1,
-        )
-        train_loader = DataLoader(
-            train_set,
-            batch_size=args.batch_size,
-            shuffle=True,
-            num_workers=0,
-            collate_fn=PS,
-            pin_memory=False,
-        )
-        test_loader = DataLoader(
-            test_set,
-            batch_size=args.batch_size,
-            shuffle=True,
-            num_workers=0,
-            collate_fn=PS,
-            pin_memory=False,
-        )
-    elif args.task == "fewrel":
+    if args.task == "fewrel":
         df_train, df_test = preprocess_fewrel(args, do_lower_case=lower_case)
         train_loader = fewrel_dataset(
             df_train,
