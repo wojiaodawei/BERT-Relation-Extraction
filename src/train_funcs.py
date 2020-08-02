@@ -50,9 +50,7 @@ class Two_Headed_Loss(nn.Module):
             p = factor * torch.dot(f1_vec, f2_vec)
         return p
 
-    def forward(
-        self, lm_logits, blank_logits, lm_labels, blank_labels, verbose=False
-    ):
+    def forward(self, lm_logits, blank_logits, lm_labels, blank_labels):
         """
         lm_logits: (batch_size, sequence_length, hidden_size)
         lm_labels: (batch_size, sequence_length, label_idxs)
@@ -100,12 +98,6 @@ class Two_Headed_Loss(nn.Module):
         blank_loss = self.BCE_criterion(
             torch.cat([pos_logits, neg_logits], dim=0), blank_labels_
         )
-
-        if verbose:
-            print(
-                "LM loss, blank_loss for last batch: %.5f, %.5f"
-                % (lm_loss, blank_loss)
-            )
 
         total_loss = lm_loss + blank_loss
         return total_loss

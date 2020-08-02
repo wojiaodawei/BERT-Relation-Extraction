@@ -20,6 +20,12 @@ logger = logging.getLogger("__file__")
 
 class SemEvalDataloader:
     def __init__(self, config: dict):
+        """
+        DataLoader for SemEval 2010 Task 8 data.
+
+        Args:
+            config: configuration parameters
+        """
         self.config = config
         transformer = self.config.get("transformer")
 
@@ -36,7 +42,7 @@ class SemEvalDataloader:
         self.test_len = len(self.test_loader) * self.config.get("batch_size")
 
     @classmethod
-    def load_tokenizer(selc, transformer: str):
+    def load_tokenizer(cls, transformer: str):
         """
         Loads the tokenizer based on th given transformer name.
 
@@ -75,23 +81,30 @@ class SemEvalDataloader:
         """
         train_data_path = self.config.get("train_file")
         logger.info("Reading training file from {0}".format(train_data_path))
-        with open(train_data_path, "r", encoding="utf8") as f:
-            text = f.readlines()
+        with open(train_data_path, "r", encoding="utf8") as train_file:
+            text = train_file.readlines()
 
-        sents, relations, comments, blanks = self.process_text(text, "train")
+        sents, relations, comments, blanks = self._preprocess_string(
+            text, "train"
+        )
         df_train = pd.DataFrame(data={"sents": sents, "relations": relations})
 
         test_data_path = self.config.get("test_file")
         logger.info("Reading test file from {0}".format(test_data_path))
-        with open(test_data_path, "r", encoding="utf8") as f:
-            text = f.readlines()
+        with open(test_data_path, "r", encoding="utf8") as test_file:
+            text = test_file.readlines()
 
-        sents, relations, comments, blanks = self.process_text(text, "test")
+        (
+            sents,
+            relations,
+            comments,
+            blanks,
+        ) = SemEvalDataloader._preprocess_string(text, "test")
         df_test = pd.DataFrame(data={"sents": sents, "relations": relations})
 
         rm = Relations_Mapper(df_train["relations"])
-        with open(self.relations_mapper_path, "wb") as output:
-            joblib.dump(rm, output)
+        with open(self.relations_mapper_path, "wb") as rm_output:
+            joblib.dump(rm, rm_output)
         logger.info(
             "Saved relations mapper at {0}".format(self.relations_mapper_path)
         )
@@ -99,20 +112,21 @@ class SemEvalDataloader:
         df_train["relations_id"] = df_train.progress_apply(
             lambda x: rm.rel2idx[x["relations"]], axis=1
         )
-        with open(self.trainset_path, "wb") as output:
-            joblib.dump(df_train, output)
+        with open(self.trainset_path, "wb") as train_output:
+            joblib.dump(df_train, train_output)
         logger.info("Saved trainset at {0}".format(self.trainset_path))
 
         df_test["relations_id"] = df_test.progress_apply(
             lambda x: rm.rel2idx[x["relations"]], axis=1
         )
-        with open(self.testset_path, "wb") as output:
-            joblib.dump(df_test, output)
+        with open(self.testset_path, "wb") as test_output:
+            joblib.dump(df_test, test_output)
         logger.info("Saved testset at {0}".format(self.testset_path))
 
         return df_train, df_test, rm
 
-    def process_text(self, text, mode="train"):
+    @classmethod
+    def _preprocess_string(cls, text, mode="train"):
         sents, relations, comments, blanks = [], [], [], []
         for i in range(int(len(text) / 4)):
             sent = text[4 * i]
@@ -121,12 +135,16 @@ class SemEvalDataloader:
             blank = text[4 * i + 3]
 
             # check entries
-            if mode == "train":
-                assert int(re.match("^\d+", sent)[0]) == (i + 1)
-            else:
-                assert (int(re.match("^\d+", sent)[0]) - 8000) == (i + 1)
-            assert re.match("^Comment", comment)
-            assert len(blank) == 1
+            if mode == "train" and not int(re.match("^\d+", sent)[0]) == (
+                i + 1
+            ):
+                raise ValueError("No digit found")
+            elif not (int(re.match("^\d+", sent)[0]) - 8000) == (i + 1):
+                raise ValueError("No digit found")
+            if not re.match("^Comment", comment):
+                raise ValueError("No comment found")
+            if len(blank) != 1:
+                raise ValueError("Too much blanks")
 
             sent = re.findall('"(.+)"', sent)[0]
             sent = re.sub("<e1>", "[E1]", sent)

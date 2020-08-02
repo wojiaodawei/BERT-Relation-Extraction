@@ -1,5 +1,7 @@
+# Experiment
+experiment_name: real_positive_pools
 # Data
-data: data/cnn-local.txt #pre-training data.txt file path
+data: data/cnn.txt #pre-training data.txt file path
 entities_of_interest:
   - PERSON
   - NORP
@@ -16,6 +18,7 @@ normalization:
   - lowercase
   - html
   - urls
+min_pool_size: 8
 # Model
 transformer: bert-base-uncased
 # Training
@@ -24,4 +27,4 @@ gradient_acc_steps: 2 # steps of gradient accumulation
 max_norm: 1.0 # Clipped gradient norm
 epochs: 18 # Number of Epochs
 lr: 0.0001 # learning rate
-resume: True
+resume: False
