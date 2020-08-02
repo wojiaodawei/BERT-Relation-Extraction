@@ -41,11 +41,6 @@ resume: False # Use this to resume the train job
 Pre-training data can be any .txt continuous text file.  
 We use Spacy NLP to grab pairwise entities (within a window size of 40 tokens length) from the text to form relation statements for pre-training. Entities recognition are based on NER and dependency tree parsing of objects/subjects.  
 
-The pre-training data taken from CNN dataset (cnn.txt) can be downloaded [here.](https://drive.google.com/file/d/1aMiIZXLpO7JF-z_Zte3uH7OCo4Uk_0do/view?usp=sharing)   
-However, do note that the paper uses wiki dumps data for MTB pre-training which is much larger than the CNN dataset.   
-
-Note: Pre-training can take a long time, depending on available GPU. It is possible to directly fine-tune on the relation-extraction task and still get reasonable results, following the section below.  
-
 ## Fine-tuning on SemEval2010 Task 8 (BERT<sub>EM</sub>/BERT<sub>EM</sub> + MTB)
 Run main_task.py with arguments below. Requires SemEval2010 Task 8 dataset, available [here.](https://github.com/sahitya0000/Relation-Classification/blob/master/corpus/SemEval2010_task8_all_data.zip) Download & unzip to ./data/ folder.
 
