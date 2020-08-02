@@ -181,3 +181,6 @@ data/*
 
 # models
 models/*
+
+# results
+results/*

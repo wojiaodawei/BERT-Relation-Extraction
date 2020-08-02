@@ -10,6 +10,7 @@ import spacy
 import torch
 from ml_utils.common import valncreate_dir
 from ml_utils.normalizer import Normalizer
+from pandarallel import pandarallel
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 from transformers import AlbertTokenizer, BertTokenizer
@@ -22,6 +23,8 @@ logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
 )
 logger = logging.getLogger("__file__")
+
+pandarallel.initialize(nb_workers=8, use_memory_fs=False)
 
 
 class MTBPretrainDataLoader:
@@ -101,49 +104,54 @@ class MTBPretrainDataLoader:
         preprocessed_file = os.path.join(
             "data", self.experiment_name, file_name + ".pkl"
         )
-
+        preprocessed_raw_data = os.path.join(
+            "data", data_file_name + "_extracted.pkl"
+        )
         if os.path.isfile(preprocessed_file):
             logger.info("Loaded pre-training data from saved file")
             with open(preprocessed_file, "rb") as pkl_file:
-                data = joblib.load(pkl_file)
+                dataset = joblib.load(pkl_file)
 
+        elif os.path.isfile(preprocessed_raw_data):
+            with open(preprocessed_raw_data, "rb") as in_file:
+                dataset = joblib.load(in_file)
         else:
-            dataset = []
             logger.info("Loading Spacy NLP")
             nlp = spacy.load("en_core_web_lg")
 
             logger.info("Loading pre-training data")
             with open(data_path, "r", encoding="utf8") as f:
                 text = f.readlines()
-
-            while text:
-                current_n_char = 0
-                chunk = []
-                while current_n_char < 100000 and text:
-                    this_text = text.pop()
-                    current_n_char += len(this_text)
-                    chunk += [this_text]
-                chunk = self._process_textlines(chunk)
-
-                doc = nlp(chunk)
-                dataset.extend(
-                    self.create_pretraining_dataset(doc, window_size=40)
-                )
+            text = pd.Series(text)
+            dataset = text.parallel_apply(func=self._extract_entities, nlp=nlp)
+            dataset = pd.concat(dataset.values)
             logger.info(
                 "Number of relation statements in corpus: {0}".format(
                     len(dataset)
                 )
             )
-            dataset = pd.DataFrame(dataset)
-            dataset.columns = ["r", "e1", "e2"]
-            valncreate_dir(os.path.join("data", self.experiment_name))
-            data = self.preprocess(dataset)
-            with open(preprocessed_file, "wb") as output:
-                joblib.dump(data, output)
-            logger.info(
-                "Saved pre-training corpus to {0}".format(preprocessed_file)
-            )
-        return data
+            del nlp  # noqa: WPS420
+            dataset.reset_index(inplace=True, drop=True)
+            with open(preprocessed_raw_data, "wb") as preprocessed_path:
+                joblib.dump(dataset, preprocessed_path)
+
+        valncreate_dir(os.path.join("data", self.experiment_name))
+        dataset = self.preprocess(dataset)
+        with open(preprocessed_file, "wb") as fully_preprocessed_path:
+            joblib.dump(dataset, fully_preprocessed_path)
+        logger.info(
+            "Saved pre-training corpus to {0}".format(preprocessed_file)
+        )
+        return dataset
+
+    def _extract_entities(self, t, nlp):
+        t = self._process_textlines([t])
+        t = self.normalizer.normalize(t)
+        doc = nlp(t)
+        return pd.DataFrame(
+            self.create_pretraining_dataset(doc, window_size=40),
+            columns=["r", "e1", "e2"],
+        )
 
     def preprocess(self, data: pd.DataFrame):
         """
@@ -154,17 +162,30 @@ class MTBPretrainDataLoader:
         Args:
             data: dataset to preprocess
         """
+        logger.info("Clean dataset")
+        idx_to_pop = set()
+        groups = data.groupby(["e1", "e2"])
+        for _idx, group in tqdm(groups, total=len(groups)):
+            if len(group) < self.config.get("min_pool_size", 2):
+                for i in group.index.values.tolist():
+                    idx_to_pop.add(i)
+        data = data.drop(index=idx_to_pop).reset_index(drop=True)
+        data["relation_id"] = np.arange(0, len(data))
+
         logger.info("Normalizing relations")
         normalized_relations = []
-        for _idx, row in data.iterrows():
+        for _idx, row in tqdm(data.iterrows(), total=len(data)):
             relation = self._add_special_tokens(row)
             normalized_relations.append(relation)
 
         logger.info("Tokenizing relations")
-        tokenized_relations = [
-            torch.IntTensor(self.tokenizer.convert_tokens_to_ids(n))
-            for n in normalized_relations
-        ]
+        tokenized_relations = []
+        for n in tqdm(normalized_relations):
+            tokenized_relations.append(
+                torch.IntTensor(self.tokenizer.convert_tokens_to_ids(n))
+            )
+        del normalized_relations  # noqa: WPS 420
+
         tokenized_relations = pad_sequence(
             tokenized_relations,
             batch_first=True,
@@ -176,7 +197,9 @@ class MTBPretrainDataLoader:
             (tr.numpy().tolist(), e1, e2)
             for tr, e1, e2 in zip(tokenized_relations, e_span1, e_span2)
         ]
+        del tokenized_relations  # noqa: WPS 420
         data["r"] = r
+
         pools = self.transform_data(data)
         preprocessed_data = {
             "entities_pools": pools,
@@ -194,7 +217,7 @@ class MTBPretrainDataLoader:
                 relation.append("[E1]")
             if w_idx == e_span2[0]:
                 relation.append("[E2]")
-            relation.append(self.normalizer.normalize(w))
+            relation.append(w)
             if w_idx == e_span1[1]:
                 relation.append("[/E1]")
             if w_idx == e_span2[1]:
@@ -212,8 +235,6 @@ class MTBPretrainDataLoader:
         Args:
             df: Dataframe to use to generate QQ pairs.
         """
-        df["relation_id"] = np.arange(0, len(df))
-        logger.info("Generating class pools")
         pools = self.generate_entities_pools(df)
         for idx, pool in enumerate(pools):
             if np.random.random() > 0.75:
@@ -234,20 +255,19 @@ class MTBPretrainDataLoader:
             Index of paired question.
             Common answer id.
         """
-        groups = data.groupby(["e1", "e2"])
+        logger.info("Generating class pools")
         pool = []
-        for idx, df in tqdm(groups):
-            if len(df) < self.config.get("min_pool_size", 1):
-                continue
+        groups = data.groupby(["e1", "e2"])
+        groups_e1 = data.groupby(["e1"])
+        groups_e2 = data.groupby(["e2"])
+        for idx, group in tqdm(groups, total=len(groups)):
             e1, e2 = idx
-            e1_negatives = data[((data["e1"] == e1) & (data["e2"] != e2))][
-                "relation_id"
-            ]
-            e2_negatives = data[((data["e1"] != e1) & (data["e2"] == e2))][
-                "relation_id"
-            ]
+            data_e1 = groups_e1.get_group(e1)
+            data_e2 = groups_e2.get_group(e2)
+            e1_negatives = data_e1.loc[data_e1["e2"] != e2, "relation_id"]
+            e2_negatives = data_e2.loc[data_e2["e1"] != e1, "relation_id"]
             entities_pool = (
-                df["relation_id"].values.tolist(),
+                group["relation_id"].values.tolist(),
                 e1_negatives.values.tolist(),
                 e2_negatives.values.tolist(),
             )

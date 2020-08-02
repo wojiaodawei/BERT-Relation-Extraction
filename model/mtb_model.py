@@ -106,6 +106,8 @@ class MTBModel:
             checkpoint["best_acc"],
             checkpoint["losses_per_epoch"],
             checkpoint["accuracy_per_epoch"],
+            checkpoint["lm_acc"],
+            checkpoint["blanks_mse"],
         )
 
     def train(self):
@@ -122,18 +124,23 @@ class MTBModel:
                 self._best_mtb_bce,
                 self._train_loss,
                 self._train_lm_acc,
+                self._lm_acc,
+                self._mtb_bce,
             ) = self.load_best_model(self.checkpoint_dir)
 
         logger.info("Starting training process")
         update_size = len(self.data_loader.train_generator) // 10
         for epoch in range(self._start_epoch, self.config.get("epochs")):
             self._train_epoch(epoch, update_size)
-
-        logger.info("Finished Training!")
-        self._plot_results()
+            self._plot_results()
+        logger.info("Finished Training.")
         return self.model
 
     def _plot_results(self):
+        results_path = os.path.join(
+            "results", "pretraining", self.experiment_name, self.transformer
+        )
+        valncreate_dir(results_path)
         fig = plt.figure(figsize=(20, 20))
         ax = fig.add_subplot(111)
         ax.scatter(
@@ -143,7 +150,12 @@ class MTBModel:
         ax.set_xlabel("Epoch", fontsize=22)
         ax.set_ylabel("Training Loss per batch", fontsize=22)
         ax.set_title("Training Loss vs Epoch", fontsize=32)
-        plt.savefig(os.path.join("./data/", "loss_vs_epoch_ALBERT.png"))
+        plt.savefig(
+            os.path.join(
+                results_path, "train_loss_{0}.png".format(self.transformer)
+            )
+        )
+
         fig2 = plt.figure(figsize=(20, 20))
         ax2 = fig2.add_subplot(111)
         ax2.scatter(
@@ -151,9 +163,43 @@ class MTBModel:
         )
         ax2.tick_params(axis="both", length=2, width=1, labelsize=14)
         ax2.set_xlabel("Epoch", fontsize=22)
-        ax2.set_ylabel("Test Masked LM Accuracy", fontsize=22)
-        ax2.set_title("Test Masked LM Accuracy vs Epoch", fontsize=32)
-        plt.savefig(os.path.join("./data/", "accuracy_vs_epoch_ALBERT.png"))
+        ax2.set_ylabel("Train Masked LM Accuracy", fontsize=22)
+        ax2.set_title("Train Masked LM Accuracy vs Epoch", fontsize=32)
+        plt.savefig(
+            os.path.join(
+                results_path, "train_lm_acc_{0}.png".format(self.transformer)
+            )
+        )
+
+        fig3 = plt.figure(figsize=(20, 20))
+        ax3 = fig3.add_subplot(111)
+        ax3.scatter(
+            np.arange(len(self._lm_acc)), self._lm_acc,
+        )
+        ax3.tick_params(axis="both", length=2, width=1, labelsize=14)
+        ax3.set_xlabel("Epoch", fontsize=22)
+        ax3.set_ylabel("Val Masked LM Accuracy", fontsize=22)
+        ax3.set_title("Val Masked LM Accuracy vs Epoch", fontsize=32)
+        plt.savefig(
+            os.path.join(
+                results_path, "val_lm_acc_{0}.png".format(self.transformer)
+            )
+        )
+
+        fig2 = plt.figure(figsize=(20, 20))
+        ax2 = fig2.add_subplot(111)
+        ax2.scatter(
+            np.arange(len(self._mtb_bce)), self._mtb_bce,
+        )
+        ax2.tick_params(axis="both", length=2, width=1, labelsize=14)
+        ax2.set_xlabel("Epoch", fontsize=22)
+        ax2.set_ylabel("Val MTB Binary Cross Entropy", fontsize=22)
+        ax2.set_title("Val MTB Binary Cross Entropy", fontsize=32)
+        plt.savefig(
+            os.path.join(
+                results_path, "val_mtb_bce_{0}.png".format(self.transformer)
+            )
+        )
 
     def _train_epoch(self, epoch, update_size):
         logger.info("Starting epoch {0}".format(epoch + 1))
@@ -161,7 +207,7 @@ class MTBModel:
 
         self.model.train()
 
-        train_acc, train_loss, train_mtb_bce = self._reset_train_metrics()
+        train_acc, train_loss, train_mtb_bce = MTBModel._reset_train_metrics()
         train_loss_per_batch = []
         train_lm_acc_per_batch = []
         train_mtb_bce_per_batch = []
@@ -183,7 +229,7 @@ class MTBModel:
                 train_lm_acc_per_batch.append(train_acc / update_size)
                 train_mtb_bce_per_batch.append(train_mtb_bce / update_size)
                 logger.info(
-                    "{0}/{1} points: - ".format((i + 1), self.train_len)
+                    "{0}/{1} pools: - ".format((i + 1), self.train_len)
                     + "Train loss: {0}, Train LM accuracy: {1}, Train MTB Binary Cross Entropy {2}".format(
                         train_loss_per_batch[-1],
                         train_lm_acc_per_batch[-1],
