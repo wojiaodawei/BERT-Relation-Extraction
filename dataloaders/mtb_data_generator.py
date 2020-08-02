@@ -32,14 +32,6 @@ class MTBGenerator(Dataset):
         ]
         self.tokenizer = tokenizer
 
-        self.r_entities_map = {}
-        for idx, class_pool in enumerate(self.data["entities_pools"]):
-            for q in class_pool[0]:
-                self.r_entities_map[q] = idx
-
-        self.r_indices = list(self.r_entities_map.keys())
-        self.total_data_size = len(self.r_indices)
-
         self.blank_idx = self.tokenizer.convert_tokens_to_ids("[BLANK]")
         self.mask_idx = self.tokenizer.mask_token_id
 
@@ -61,7 +53,7 @@ class MTBGenerator(Dataset):
         )  # noqa: WPS335
 
     def __len__(self):
-        return len(self.r_entities_map) - 1
+        return len(self.data["entities_pools"]) - 1
 
     def _put_blanks(self, data):
         alpha = 0.7
@@ -74,7 +66,7 @@ class MTBGenerator(Dataset):
             r0[r1[0] : (r1[1] + 1)] = self.blank_idx
             e1 = "[BLANK]"
 
-        if blank_e2 <= alpha ** 2:
+        if blank_e2 < alpha:
             r0[r2[0] : (r2[1] + 1)] = self.blank_idx
             e2 = "[BLANK]"
         r = (r0, r1, r2)
@@ -110,10 +102,8 @@ class MTBGenerator(Dataset):
 
         return sequence, masked_for_pred, entities_start
 
-    def __getitem__(self, idx):
+    def __getitem__(self, pool_id):
         tokenized_relations = self.data["tokenized_relations"]
-        idx = list(self.r_entities_map.keys())[idx]
-        pool_id = self.r_entities_map[idx]
         this_entity_pool = self.data["entities_pools"][pool_id]
         pos_idxs = np.random.choice(
             this_entity_pool[0],
