@@ -178,6 +178,7 @@ fabric.properties
 
 # data
 data/*
+!data/cnn-small.txt
 
 # models
 models/*
