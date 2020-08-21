@@ -110,7 +110,7 @@ class MTBPretrainDataLoader:
         if os.path.isfile(preprocessed_file):
             logger.info("Loaded pre-training data from saved file")
             with open(preprocessed_file, "rb") as pkl_file:
-                dataset = joblib.load(pkl_file)
+                return joblib.load(pkl_file)
 
         elif os.path.isfile(preprocessed_raw_data):
             with open(preprocessed_raw_data, "rb") as in_file:
