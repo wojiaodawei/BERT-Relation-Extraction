@@ -2,20 +2,20 @@ import logging
 import os
 import time
 
+from tqdm import tqdm
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from ml_utils.common import valncreate_dir
-from seqeval.metrics import f1_score, precision_score, recall_score
-from torch.nn.utils import clip_grad_norm_
-from tqdm import tqdm
-
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.SemEvalDataloader import SemEvalDataloader
+from ml_utils.common import valncreate_dir
 from model.albert.albert import AlbertModel
-from model.bert.bert import BertModel
+from model.bert import BertModel
+from seqeval.metrics import f1_score, precision_score, recall_score
+from torch.nn.utils import clip_grad_norm_
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL

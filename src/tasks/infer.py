@@ -12,9 +12,10 @@ import pickle
 import re
 from itertools import permutations
 
+from tqdm import tqdm
+
 import spacy
 import torch
-from tqdm import tqdm
 
 from ..misc import save_as_pickle
 from .preprocessing_funcs import load_dataloaders
@@ -67,7 +68,7 @@ class infer_from_trained(object):
         from .train_funcs import load_state
 
         if self.args.model_no == 0:
-            from model.bert.bert import BertModel as Model
+            from model.bert import BertModel as Model
 
             model = args.model_size  #'bert-base-uncased'
             model_name = "BERT"
@@ -91,7 +92,7 @@ class infer_from_trained(object):
                 n_classes_=self.args.num_classes,
             )
         elif args.model_no == 2:  # BioBert
-            from model.bert.bert import BertModel, BertConfig
+            from model.bert import BertModel, BertConfig
 
             model = "bert-base-uncased"
             model_name = "BioBERT"
@@ -285,8 +286,8 @@ class FewRel(object):
         self.cuda = torch.cuda.is_available()
 
         if self.args.model_no == 0:
-            from model.bert.bert import BertModel as Model
-            from model.bert.bert_tokenizer import BertTokenizer as Tokenizer
+            from model.bert import BertModel as Model
+            from model.bert_tokenizer import BertTokenizer as Tokenizer
 
             model = args.model_size  #'bert-large-uncased' 'bert-base-uncased'
             model_name = "BERT"
@@ -311,8 +312,8 @@ class FewRel(object):
                 task="fewrel",
             )
         elif args.model_no == 2:  # BioBert
-            from model.bert.bert import BertModel, BertConfig
-            from model.bert.bert_tokenizer import BertTokenizer as Tokenizer
+            from model.bert import BertModel, BertConfig
+            from model.bert_tokenizer import BertTokenizer as Tokenizer
 
             model = "bert-base-uncased"
             model_name = "BioBERT"

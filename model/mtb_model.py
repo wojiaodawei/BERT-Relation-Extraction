@@ -5,16 +5,14 @@ from itertools import combinations
 
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
-from ml_utils.common import valncreate_dir
-from torch import nn, optim
-from torch.nn.utils import clip_grad_norm_
-
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_loader import MTBPretrainDataLoader
-from model.albert.albert import AlbertModel
-from model.bert.bert import BertModel
+from matplotlib import pyplot as plt
+from ml_utils.common import valncreate_dir
+from model.bert import BertModel
 from src.train_funcs import Two_Headed_Loss
+from torch import nn, optim
+from torch.nn.utils import clip_grad_norm_
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL,
@@ -38,18 +36,11 @@ class MTBModel:
         self.train_len = len(self.data_loader.train_generator)
         logger.info("Loaded %d pre-training samples." % self.train_len)
 
-        if "albert" in self.transformer:
-            self.model = AlbertModel.from_pretrained(
-                model_size=self.transformer,
-                force_download=False,
-                pretrained_model_name_or_path=self.transformer,
-            )
-        else:
-            self.model = BertModel.from_pretrained(
-                model_size=self.transformer,
-                pretrained_model_name_or_path=self.transformer,
-                force_download=False,
-            )
+        self.model = BertModel.from_pretrained(
+            model_size=self.transformer,
+            pretrained_model_name_or_path=self.transformer,
+            force_download=False,
+        )
 
         self.tokenizer = self.data_loader.tokenizer
         self.model.resize_token_embeddings(len(self.tokenizer))
@@ -155,6 +146,7 @@ class MTBModel:
                 results_path, "train_loss_{0}.png".format(self.transformer)
             )
         )
+        fig.close()
 
         fig2 = plt.figure(figsize=(20, 20))
         ax2 = fig2.add_subplot(111)
@@ -170,6 +162,7 @@ class MTBModel:
                 results_path, "train_lm_acc_{0}.png".format(self.transformer)
             )
         )
+        fig2.close()
 
         fig3 = plt.figure(figsize=(20, 20))
         ax3 = fig3.add_subplot(111)
@@ -185,21 +178,23 @@ class MTBModel:
                 results_path, "val_lm_acc_{0}.png".format(self.transformer)
             )
         )
+        fig3.close()
 
-        fig2 = plt.figure(figsize=(20, 20))
-        ax2 = fig2.add_subplot(111)
-        ax2.scatter(
+        fig4 = plt.figure(figsize=(20, 20))
+        ax4 = fig4.add_subplot(111)
+        ax4.scatter(
             np.arange(len(self._mtb_bce)), self._mtb_bce,
         )
-        ax2.tick_params(axis="both", length=2, width=1, labelsize=14)
-        ax2.set_xlabel("Epoch", fontsize=22)
-        ax2.set_ylabel("Val MTB Binary Cross Entropy", fontsize=22)
-        ax2.set_title("Val MTB Binary Cross Entropy", fontsize=32)
+        ax4.tick_params(axis="both", length=2, width=1, labelsize=14)
+        ax4.set_xlabel("Epoch", fontsize=22)
+        ax4.set_ylabel("Val MTB Binary Cross Entropy", fontsize=22)
+        ax4.set_title("Val MTB Binary Cross Entropy", fontsize=32)
         plt.savefig(
             os.path.join(
                 results_path, "val_mtb_bce_{0}.png".format(self.transformer)
             )
         )
+        fig4.close()
 
     def _train_epoch(self, epoch, update_size):
         logger.info("Starting epoch {0}".format(epoch + 1))

@@ -4,20 +4,20 @@ import logging
 import os
 import re
 
+from tqdm import tqdm
+
 import joblib
 import numpy as np
 import pandas as pd
 import spacy
 import torch
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from dataloaders.mtb_data_generator import MTBGenerator
 from ml_utils.common import valncreate_dir
 from ml_utils.normalizer import Normalizer
 from pandarallel import pandarallel
 from torch.nn.utils.rnn import pad_sequence
-from tqdm import tqdm
-from transformers import AlbertTokenizer, BertTokenizer
-
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
-from dataloaders.mtb_data_generator import MTBGenerator
+from transformers import BertTokenizer
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -72,10 +72,6 @@ class MTBPretrainDataLoader:
             logger.info("Loading tokenizer from saved path.")
             with open(tokenizer_path, "rb") as pkl_file:
                 return joblib.load(pkl_file)
-        elif "albert" in transformer:
-            tokenizer = AlbertTokenizer.from_pretrained(
-                transformer, do_lower_case=False
-            )
         else:
             tokenizer = BertTokenizer.from_pretrained(
                 transformer, do_lower_case=False, add_special_tokens=True
@@ -107,6 +103,7 @@ class MTBPretrainDataLoader:
         preprocessed_raw_data = os.path.join(
             "data", data_file_name + "_extracted.pkl"
         )
+
         if os.path.isfile(preprocessed_file):
             logger.info("Loaded pre-training data from saved file")
             with open(preprocessed_file, "rb") as pkl_file:
@@ -319,7 +316,7 @@ class MTBPretrainDataLoader:
         spans = list(doc.ents) + list(doc.noun_chunks)
         spans = spacy.util.filter_spans(spans)
         with doc.retokenize() as retokenizer:
-            [retokenizer.merge(span) for span in spans]
+            [retokenizer.merge(span) for span in spans]  # noqa: WPS428
         doc_ents = doc.ents
         ents_text = set()
         ents = []
