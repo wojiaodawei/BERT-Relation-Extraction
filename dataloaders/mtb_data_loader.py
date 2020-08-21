@@ -316,6 +316,25 @@ class MTBPretrainDataLoader:
         length_doc = len(doc)
         data = []
         ents_list = []
+
+        spans = list(doc.ents) + list(doc.noun_chunks)  # collect nodes
+        spans = spacy.util.filter_spans(spans)
+        with doc.retokenize() as retokenizer:
+            [retokenizer.merge(span) for span in spans]
+
+        triples = []
+
+        for ent in spans:
+            preps = [prep for prep in ent.root.head.children if
+                     prep.dep_ == "prep"]
+            for prep in preps:
+                for child in prep.children:
+                    triples.append(
+                        [ent.text, "{} {}".format(ent.root.head, prep),
+                         child.text])
+
+        return triples
+
         for e1, e2 in itertools.product(ents, ents):
             if e1 == e2:
                 continue
