@@ -4,6 +4,8 @@ import time
 from itertools import combinations
 
 import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_loader import MTBPretrainDataLoader
@@ -19,6 +21,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__file__)
 
+sns.set(font_scale=2.2)
+
 
 class MTBModel:
     def __init__(self, config: dict):
@@ -29,7 +33,6 @@ class MTBModel:
             config: configuration parameters
         """
         self.experiment_name = config.get("experiment_name")
-        self.gradient_acc_steps = config.get("gradient_acc_steps")
         self.transformer = config.get("transformer")
         self.config = config
         self.data_loader = MTBPretrainDataLoader(self.config)
@@ -132,69 +135,65 @@ class MTBModel:
             "results", "pretraining", self.experiment_name, self.transformer
         )
         valncreate_dir(results_path)
-        fig = plt.figure(figsize=(20, 20))
-        ax = fig.add_subplot(111)
-        ax.scatter(
-            np.arange(len(self._train_loss)), self._train_loss,
+
+        data = pd.DataFrame(
+            {
+                "Epoch": np.arange(len(self._train_loss)),
+                "Train Loss": self._train_loss,
+                "Train LM Accuracy": self._train_lm_acc,
+                "Val LM Accuracy": self._lm_acc,
+                "Val MTB Loss": self._mtb_bce,
+            }
         )
-        ax.tick_params(axis="both", length=2, width=1, labelsize=14)
-        ax.set_xlabel("Epoch", fontsize=22)
-        ax.set_ylabel("Training Loss per batch", fontsize=22)
-        ax.set_title("Training Loss vs Epoch", fontsize=32)
+
+        fig, ax = plt.subplots(figsize=(20, 20))
+        sns.lineplot(x="Epoch", y="Train Loss", ax=ax, data=data, linewidth=4)
+        ax.set_title("Training Loss")
         plt.savefig(
             os.path.join(
                 results_path, "train_loss_{0}.png".format(self.transformer)
             )
         )
-        fig.close()
+        plt.close(fig)
 
-        fig2 = plt.figure(figsize=(20, 20))
-        ax2 = fig2.add_subplot(111)
-        ax2.scatter(
-            np.arange(len(self._train_lm_acc)), self._train_lm_acc,
+        tmp = data[["Epoch", "Train LM Accuracy", "Val LM Accuracy"]].melt(
+            id_vars="Epoch", var_name="Set", value_name="LM Accuracy"
         )
-        ax2.tick_params(axis="both", length=2, width=1, labelsize=14)
-        ax2.set_xlabel("Epoch", fontsize=22)
-        ax2.set_ylabel("Train Masked LM Accuracy", fontsize=22)
-        ax2.set_title("Train Masked LM Accuracy vs Epoch", fontsize=32)
+        fig, ax = plt.subplots(figsize=(20, 20))
+        sns.lineplot(
+            x="Epoch",
+            y="LM Accuracy",
+            hue="Set",
+            ax=ax,
+            data=tmp,
+            linewidth=4,
+        )
+        ax.set_title("LM Accuracy")
         plt.savefig(
             os.path.join(
-                results_path, "train_lm_acc_{0}.png".format(self.transformer)
+                results_path, "lm_acc_{0}.png".format(self.transformer)
             )
         )
-        fig2.close()
+        plt.close(fig)
 
-        fig3 = plt.figure(figsize=(20, 20))
-        ax3 = fig3.add_subplot(111)
-        ax3.scatter(
-            np.arange(len(self._lm_acc)), self._lm_acc,
+        fig, ax = plt.subplots(figsize=(20, 20))
+        sns.lineplot(
+            x="Epoch", y="Val MTB Loss", ax=ax, data=data, linewidth=4
         )
-        ax3.tick_params(axis="both", length=2, width=1, labelsize=14)
-        ax3.set_xlabel("Epoch", fontsize=22)
-        ax3.set_ylabel("Val Masked LM Accuracy", fontsize=22)
-        ax3.set_title("Val Masked LM Accuracy vs Epoch", fontsize=32)
-        plt.savefig(
-            os.path.join(
-                results_path, "val_lm_acc_{0}.png".format(self.transformer)
-            )
-        )
-        fig3.close()
-
-        fig4 = plt.figure(figsize=(20, 20))
-        ax4 = fig4.add_subplot(111)
-        ax4.scatter(
-            np.arange(len(self._mtb_bce)), self._mtb_bce,
-        )
-        ax4.tick_params(axis="both", length=2, width=1, labelsize=14)
-        ax4.set_xlabel("Epoch", fontsize=22)
-        ax4.set_ylabel("Val MTB Binary Cross Entropy", fontsize=22)
-        ax4.set_title("Val MTB Binary Cross Entropy", fontsize=32)
+        ax.set_title("Val MTB Binary Cross Entropy")
         plt.savefig(
             os.path.join(
                 results_path, "val_mtb_bce_{0}.png".format(self.transformer)
             )
         )
-        fig4.close()
+        plt.close(fig)
+
+        data.to_csv(
+            os.path.join(
+                results_path, "kpis_{0}.cvs".format(self.transformer)
+            ),
+            index=False,
+        )
 
     def _train_epoch(self, epoch, update_size):
         logger.info("Starting epoch {0}".format(epoch + 1))
@@ -209,18 +208,15 @@ class MTBModel:
 
         for i, data in enumerate(self.data_loader.train_generator):
             sequence, masked_label, e1_e2_start, blank_labels = data
-            do_updates = (i % self.gradient_acc_steps) == 0
             res = self._train_on_batch(
-                sequence, masked_label, e1_e2_start, blank_labels, do_updates
+                sequence, masked_label, e1_e2_start, blank_labels
             )
             if res[0]:
                 train_loss += res[0]
                 train_acc += res[1]
                 train_mtb_bce += res[2]
             if (i % update_size) == (update_size - 1):
-                train_loss_per_batch.append(
-                    self.gradient_acc_steps * train_loss / update_size
-                )
+                train_loss_per_batch.append(train_loss / update_size)
                 train_lm_acc_per_batch.append(train_acc / update_size)
                 train_mtb_bce_per_batch.append(train_mtb_bce / update_size)
                 logger.info(
@@ -270,12 +266,7 @@ class MTBModel:
         return train_acc, train_loss, train_mtb_bce
 
     def _train_on_batch(
-        self,
-        sequence,
-        masked_label,
-        e1_e2_start,
-        blank_labels,
-        do_update: bool = True,
+        self, sequence, masked_label, e1_e2_start, blank_labels,
     ):
         masked_label = masked_label[
             (masked_label != self.tokenizer.pad_token_id)
@@ -288,12 +279,10 @@ class MTBModel:
         loss = self.criterion(
             lm_logits, blanks_logits, masked_label, blank_labels,
         )
-        loss = loss / self.gradient_acc_steps
         loss.backward()
         clip_grad_norm_(self.model.parameters(), self.config.get("max_norm"))
-        if do_update:
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
         train_metrics = self.calculate_metrics(
             lm_logits, blanks_logits, masked_label, blank_labels,
         )
