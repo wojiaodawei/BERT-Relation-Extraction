@@ -1,7 +1,7 @@
 # Experiment
-experiment_name: pretraining
+experiment_name: pretraining_small
 # Data
-data: data/cnn.txt #pre-training data.txt file path
+data: data/cnn-small.txt #pre-training data.txt file path
 entities_of_interest:
   - PERSON
   - NORP
@@ -18,13 +18,13 @@ normalization:
   - lowercase
   - html
   - urls
-min_pool_size: 8
+min_pool_size: 2
 # Model
 transformer: bert-base-uncased
 # Training
 batch_size: 32 # Training batch size
 gradient_acc_steps: 2 # steps of gradient accumulation
 max_norm: 1.0 # Clipped gradient norm
-epochs: 18 # Number of Epochs
+epochs: 100 # Number of Epochs
 lr: 0.0001 # learning rate
 resume: True

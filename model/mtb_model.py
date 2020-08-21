@@ -103,7 +103,7 @@ class MTBModel:
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         return (
             checkpoint["epoch"],
-            checkpoint["best_acc"],
+            checkpoint["best_mtb_bce"],
             checkpoint["losses_per_epoch"],
             checkpoint["accuracy_per_epoch"],
             checkpoint["lm_acc"],
@@ -315,11 +315,11 @@ class MTBModel:
             {
                 "epoch": epoch + 1,
                 "state_dict": self.model.state_dict(),
-                "best_acc": self._train_lm_acc[-1],
+                "best_mtb_bce": self._best_mtb_bce,
                 "optimizer": self.optimizer.state_dict(),
                 "scheduler": self.scheduler.state_dict(),
                 "losses_per_epoch": self._train_loss,
-                "accuracy_per_epoch": self._train_loss,
+                "accuracy_per_epoch": self._train_lm_acc,
                 "lm_acc": self._lm_acc,
                 "blanks_mse": self._mtb_bce,
             },
