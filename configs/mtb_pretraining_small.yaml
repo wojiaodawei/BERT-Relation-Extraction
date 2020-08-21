@@ -2,18 +2,6 @@
 experiment_name: pretraining_small
 # Data
 data: data/cnn-small.txt #pre-training data.txt file path
-entities_of_interest:
-  - PERSON
-  - NORP
-  - FAC
-  - ORG
-  - GPE
-  - LOC
-  - PRODUCT
-  - EVENT
-  - WORK_OF_ART
-  - LAW
-  - LANGUAGE
 normalization:
   - lowercase
   - html
@@ -27,4 +15,4 @@ gradient_acc_steps: 2 # steps of gradient accumulation
 max_norm: 1.0 # Clipped gradient norm
 epochs: 100 # Number of Epochs
 lr: 0.0001 # learning rate
-resume: True
+resume: False # Warm Start

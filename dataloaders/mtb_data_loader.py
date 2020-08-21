@@ -1,3 +1,4 @@
+import gc
 import itertools
 import logging
 import os
@@ -17,7 +18,6 @@ from transformers import AlbertTokenizer, BertTokenizer
 
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_generator import MTBGenerator
-from src.misc import get_subject_objects
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -122,15 +122,17 @@ class MTBPretrainDataLoader:
             logger.info("Loading pre-training data")
             with open(data_path, "r", encoding="utf8") as f:
                 text = f.readlines()
-            text = pd.Series(text)
-            dataset = text.parallel_apply(func=self._extract_entities, nlp=nlp)
-            dataset = pd.concat(dataset.values)
+            dataset = []
+            for t in tqdm(text):
+                dataset.append(self._extract_entities(t, nlp))
+            dataset = pd.concat(dataset)
             logger.info(
                 "Number of relation statements in corpus: {0}".format(
                     len(dataset)
                 )
             )
             del nlp  # noqa: WPS420
+            gc.collect()
             dataset.reset_index(inplace=True, drop=True)
             with open(preprocessed_raw_data, "wb") as preprocessed_path:
                 joblib.dump(dataset, preprocessed_path)
@@ -165,7 +167,7 @@ class MTBPretrainDataLoader:
         logger.info("Clean dataset")
         idx_to_pop = set()
         groups = data.groupby(["e1", "e2"])
-        for _idx, group in tqdm(groups, total=len(groups)):
+        for _group_id, group in tqdm(groups, total=len(groups)):
             if len(group) < self.config.get("min_pool_size", 2):
                 for i in group.index.values.tolist():
                     idx_to_pop.add(i)
@@ -174,7 +176,7 @@ class MTBPretrainDataLoader:
 
         logger.info("Normalizing relations")
         normalized_relations = []
-        for _idx, row in tqdm(data.iterrows(), total=len(data)):
+        for _row_id, row in tqdm(data.iterrows(), total=len(data)):
             relation = self._add_special_tokens(row)
             normalized_relations.append(relation)
 
@@ -310,30 +312,21 @@ class MTBPretrainDataLoader:
             doc: spacy doc
             window_size: Maximum windows size between to entities
         """
-        ents = doc.ents  # get entities
-
-        entities_of_interest = self.config.get("entities_of_interest")
         length_doc = len(doc)
         data = []
         ents_list = []
 
-        spans = list(doc.ents) + list(doc.noun_chunks)  # collect nodes
+        spans = list(doc.ents) + list(doc.noun_chunks)
         spans = spacy.util.filter_spans(spans)
         with doc.retokenize() as retokenizer:
             [retokenizer.merge(span) for span in spans]
-
-        triples = []
-
-        for ent in spans:
-            preps = [prep for prep in ent.root.head.children if
-                     prep.dep_ == "prep"]
-            for prep in preps:
-                for child in prep.children:
-                    triples.append(
-                        [ent.text, "{} {}".format(ent.root.head, prep),
-                         child.text])
-
-        return triples
+        doc_ents = doc.ents
+        ents_text = set()
+        ents = []
+        for e in itertools.chain(spans, doc_ents):
+            if e.text not in ents_text:
+                ents.append(e)
+                ents_text.add(e.text)
 
         for e1, e2 in itertools.product(ents, ents):
             if e1 == e2:
@@ -344,29 +337,22 @@ class MTBPretrainDataLoader:
             e2end = e2.end - 1
             e1_has_numbers = re.search("[\d+]", e1.text)
             e2_has_numbers = re.search("[\d+]", e2.text)
-            if (e1.label_ not in entities_of_interest) or e1_has_numbers:
+            if e1_has_numbers or e2_has_numbers:
                 continue
-            if (e2.label_ not in entities_of_interest) or e2_has_numbers:
-                continue
-            if e1.text.lower() == e2.text.lower():  # make sure e1 != e2
-                continue
-            # check if next nearest entity within window_size
             if 1 <= (e2start - e1end) <= window_size:
                 # Find start of sentence
-                left_r = MTBPretrainDataLoader._find_end_of_sentence(
-                    doc, e1start
-                )
-
-                # Find end of sentence
-                right_r = MTBPretrainDataLoader._find_start_of_sentence(
-                    doc, e2end, length_doc
+                (
+                    r_start,
+                    r_end,
+                ) = MTBPretrainDataLoader._find_sentence_bondaries(
+                    doc, e1start, e2end, length_doc
                 )
 
                 # sentence should not be longer than window_size
-                if (right_r - left_r) > window_size:
+                if (r_end - r_start) > window_size:
                     continue
 
-                x = [token.text for token in doc[left_r:right_r]]
+                x = [token.text for token in doc[r_start:r_end]]
 
                 empty_token = all(not token for token in x)
                 emtpy_e1 = not e1.text
@@ -377,56 +363,15 @@ class MTBPretrainDataLoader:
 
                 r = (
                     x,
-                    (e1start - left_r, e1end - left_r),
-                    (e2start - left_r, e2end - left_r),
+                    (e1start - r_start, e1end - r_start),
+                    (e2start - r_start, e2end - r_start),
                 )
                 data.append((r, e1.text, e2.text))
                 ents_list.append((e1.text, e2.text))
-
-        doc_sents = list(doc.sents)
-        for sent in doc_sents:
-            if len(sent) > (window_size + 1):
-                continue
-
-            left_r = sent[0].i
-            pairs = get_subject_objects(sent)
-
-            for pair in pairs:
-                ent1, ent2 = pair[0], pair[1]
-
-                if (len(ent1) > 3) or (len(ent2) > 3):
-                    continue
-
-                e1text, e2text = (
-                    " ".join(w.text for w in ent1)
-                    if isinstance(ent1, list)
-                    else ent1.text,
-                    " ".join(w.text for w in ent2)
-                    if isinstance(ent2, list)
-                    else ent2.text,
-                )
-                e1start, e1end = (
-                    ent1[0].i if isinstance(ent1, list) else ent1.i,
-                    ent1[-1].i + 1 if isinstance(ent1, list) else ent1.i + 1,
-                )
-                e2start, e2end = (
-                    ent2[0].i if isinstance(ent2, list) else ent2.i,
-                    ent2[-1].i + 1 if isinstance(ent2, list) else ent2.i + 1,
-                )
-                if (e1end < e2start) and ((e1text, e2text) not in ents_list):
-                    if (e2start - e1end) <= 0:
-                        raise ValueError("e2start is smaller than e1end")
-                    r = (
-                        [w.text for w in sent],
-                        (e1start - left_r, e1end - left_r),
-                        (e2start - left_r, e2end - left_r),
-                    )
-                    data.append((r, e1text, e2text))
-                    ents_list.append((e1text, e2text))
         return data
 
     @classmethod
-    def _find_end_of_sentence(cls, doc, e1start):
+    def _find_sentence_bondaries(cls, doc, e1start, e2end, length_doc):
         punc_token = False
         start = e1start - 1
         if start > 0:
@@ -438,11 +383,7 @@ class MTBPretrainDataLoader:
             left_r = start + 2 if start > 0 else 0
         else:
             left_r = 0
-        return left_r
 
-    @classmethod
-    def _find_start_of_sentence(cls, doc, e2end, length_doc):
-        punc_token = False
         start = e2end
         if start < length_doc:
             while not punc_token:
@@ -453,4 +394,4 @@ class MTBPretrainDataLoader:
             right_r = start if start < length_doc else length_doc
         else:
             right_r = length_doc
-        return right_r
+        return left_r, right_r
