@@ -12,11 +12,12 @@ import os
 import random
 import re
 
+from tqdm import tqdm
+
 import pandas as pd
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
-from tqdm import tqdm
 
 from ..misc import load_pickle, save_as_pickle
 
@@ -321,7 +322,7 @@ class fewrel_dataset(Dataset):
 
 def load_dataloaders(args):
     if args.model_no == 0:
-        from model.bert.bert_tokenizer import BertTokenizer as Tokenizer
+        from model.bert_tokenizer import BertTokenizer as Tokenizer
 
         model = args.model_size  #'bert-large-uncased' 'bert-base-uncased'
         lower_case = True
@@ -333,7 +334,7 @@ def load_dataloaders(args):
         lower_case = True
         model_name = "BERT"
     elif args.model_no == 2:
-        from model.bert.bert_tokenizer import BertTokenizer as Tokenizer
+        from model.bert_tokenizer import BertTokenizer as Tokenizer
 
         model = "bert-base-uncased"
         lower_case = False

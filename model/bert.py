@@ -47,7 +47,7 @@ class BertModel(BertPreTrainedModel):
             n_classes: Number of classes
 
         References:
-            Attention is all you need: https://arxiv.org/abs/1706.03762
+            Attention is all you need - https://arxiv.org/abs/1706.03762
         """
         super(BertModel, self).__init__(config)
         self.config = config
@@ -65,7 +65,7 @@ class BertModel(BertPreTrainedModel):
             # blanks head
             self.activation = nn.Tanh()
             # LM head
-            self.cls = BertOnlyMLMHead(config)
+            self.lm_head = BertOnlyMLMHead(config)
         elif self.task == "classification":
             self.n_classes = n_classes
             if self.model_size == "bert-base-uncased":
@@ -94,14 +94,14 @@ class BertModel(BertPreTrainedModel):
 
     def forward(
         self,
-        input_ids=None,
-        attention_mask=None,
+        input_ids: torch.LongTensor = None,
+        attention_mask: torch.FloatTensor = None,
         token_type_ids=None,
         position_ids=None,
         head_mask=None,
         inputs_embeds=None,
         encoder_hidden_states=None,
-        encoder_attention_mask=None,
+        encoder_attention_mask: torch.FloatTensor = None,
         output_attentions=None,
         output_hidden_states=None,
         e1_e2_start=None,
@@ -110,17 +110,11 @@ class BertModel(BertPreTrainedModel):
         Forward pass of BERT.
 
         Args:
-            input_ids (:obj:`torch.LongTensor` of shape :obj:`{0}`):
-                Indices of input sequence tokens in the vocabulary.
-                Indices can be obtained using :class:`transformers.BertTokenizer`.
-                See :func:`transformers.PreTrainedTokenizer.encode` and
-                :func:`transformers.PreTrainedTokenizer.__call__` for details.
-                `What are input IDs? <../glossary.html#input-ids>`__
-            attention_mask (:obj:`torch.FloatTensor` of shape :obj:`{0}`, `optional`, defaults to :obj:`None`):
-                Mask to avoid performing attention on padding token indices.
-                Mask values selected in ``[0, 1]``:
-                ``1`` for tokens that are NOT MASKED, ``0`` for MASKED tokens.
-                `What are attention masks? <../glossary.html#attention-mask>`__
+            input_ids: Indices of input sequence tokens in the vocabulary.
+                Indices can be obtained using transformers.BertTokenizer.
+                See transformers.PreTrainedTokenizer.encode and transformers.PreTrainedTokenizer for details.
+            attention_mask: Mask to avoid performing attention on padding token indices.
+                 Mask values selected in [0, 1]: 1 for tokens that are NOT MASKED, 0 for MASKED tokens.
             token_type_ids (:obj:`torch.LongTensor` of shape :obj:`{0}`, `optional`, defaults to :obj:`None`):
                 Segment token indices to indicate first and second portions of the inputs.
                 Indices are selected in ``[0, 1]``: ``0`` corresponds to a `sentence A` token, ``1``
@@ -141,11 +135,9 @@ class BertModel(BertPreTrainedModel):
             encoder_hidden_states  (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`, defaults to :obj:`None`):
                 Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention
                 if the model is configured as a decoder.
-            encoder_attention_mask (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
-                Mask to avoid performing attention on the padding token indices of the encoder input. This mask
-                is used in the cross-attention if the model is configured as a decoder.
-                Mask values selected in ``[0, 1]``:
-                ``1`` for tokens that are NOT MASKED, ``0`` for MASKED tokens.
+            encoder_attention_mask: Mask to avoid performing attention on the padding token indices of the encoder input.
+                This mask is used in the cross-attention if the model is configured as a decoder.
+                Mask values selected in [0, 1]: 1 for tokens that are NOT MASKED, 0 for MASKED tokens.
             output_attentions (:obj:`bool`, `optional`, defaults to :obj:`None`):
                 If set to ``True``, the attentions tensors of all attention layers are returned. See ``attentions`` under returned tensors for more detail.
             output_hidden_states: Output_hidden state
@@ -276,7 +268,7 @@ class BertModel(BertPreTrainedModel):
 
         if self.task is None:
             blanks_logits = self.activation(v1v2)
-            lm_logits = self.cls(sequence_output)
+            lm_logits = self.lm_head(sequence_output)
             return blanks_logits, lm_logits
         elif self.task == "classification":
             classification_logits = self.classification_layer(v1v2)
