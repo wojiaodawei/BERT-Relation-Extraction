@@ -11,27 +11,14 @@ Run pretraining.py with a YAML `--cong_file` containing the following arguments:
 ```yaml
 # Data
 data: data/cnn.txt # pre-training data.txt file path
-entities_of_interest: # Entities of interest used for pretraining
-  - PERSON
-  - NORP
-  - FAC
-  - ORG
-  - GPE
-  - LOC
-  - PRODUCT
-  - EVENT
-  - WORK_OF_ART
-  - LAW
-  - LANGUAGE
 normalization: # How to normalize the pretraining corpus
   - lowercase # Apply lowercase
   - html # Strip HTML tags
   - urls # Remove URLs
 # Model
-transformer: bert-base-uncased # weight initialization (Should be huggingface transformer mode)
+transformer: bert-base-uncased # weight initialization (Should be huggingface BERT model)
 # Training
 batch_size: 32 # Training batch size
-gradient_acc_steps: 2 # steps of gradient accumulation
 max_norm: 1.0 # Clipped gradient norm
 epochs: 18 # Number of Epochs
 lr: 0.0001 # learning rate
