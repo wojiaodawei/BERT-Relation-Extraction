@@ -1,7 +1,9 @@
 import logging
 import os
+import time
 
 import torch
+
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
@@ -30,3 +32,32 @@ class RelationExtractor:
         self.scheduler.load_state_dict(checkpoint["scheduler"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         return checkpoint
+
+    def _prepare_epoch(self, epoch):
+        logger.info("Starting epoch {0}".format(epoch + 1))
+        self.model.train()
+        return time.time()
+
+    @classmethod
+    def _reset_train_metrics(cls):
+        train_loss = 0.0
+        train_acc = 0.0
+        return train_acc, train_loss
+
+    def save_on_epoch_end(self, benchmark: list, baseline: int, epoch: int):
+        """
+        Saves current moddel at the end of the epoch.
+
+        Writes also the best model if it's better than the current baseline
+
+        Args:
+            benchmark: List of benchmark results
+            baseline: Current baseline. Best model performance so far
+            epoch: Current epoch
+        """
+        self._save_model(
+            self.checkpoint_dir, epoch,
+        )
+        if benchmark[-1] > baseline:
+            self._save_model(self.checkpoint_dir, epoch, best_model=True)
+            return benchmark[-1]

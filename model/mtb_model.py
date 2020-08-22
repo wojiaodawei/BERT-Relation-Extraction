@@ -7,14 +7,16 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
-from dataloaders.mtb_data_loader import MTBPretrainDataLoader
 from matplotlib import pyplot as plt
 from ml_utils.common import valncreate_dir
-from model.bert import BertModel
-from src.train_funcs import Two_Headed_Loss
 from torch import nn, optim
 from torch.nn.utils import clip_grad_norm_
+
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from dataloaders.mtb_data_loader import MTBPretrainDataLoader
+from model.bert import BertModel
+from model.relation_extractor import RelationExtractor
+from src.train_funcs import Two_Headed_Loss
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL,
@@ -24,7 +26,7 @@ logger = logging.getLogger(__file__)
 sns.set(font_scale=2.2)
 
 
-class MTBModel:
+class MTBModel(RelationExtractor):
     def __init__(self, config: dict):
         """
         Matching the Blanks Model.
@@ -32,6 +34,7 @@ class MTBModel:
         Args:
             config: configuration parameters
         """
+        super().__init__()
         self.experiment_name = config.get("experiment_name")
         self.transformer = config.get("transformer")
         self.config = config
@@ -89,12 +92,7 @@ class MTBModel:
         Args:
             checkpoint_dir: Checkpoint directory path
         """
-        best_model_path = os.path.join(checkpoint_dir, "best_model.pth.tar")
-        logger.info("Loading best model from {0}".format(best_model_path))
-        checkpoint = torch.load(best_model_path)
-        self.model.load_state_dict(checkpoint["state_dict"])
-        self.scheduler.load_state_dict(checkpoint["scheduler"])
-        self.optimizer.load_state_dict(checkpoint["optimizer"])
+        checkpoint = super().load_best_model(checkpoint_dir)
         return (
             checkpoint["epoch"],
             checkpoint["best_mtb_bce"],
@@ -195,10 +193,7 @@ class MTBModel:
         return data
 
     def _train_epoch(self, epoch, update_size):
-        logger.info("Starting epoch {0}".format(epoch + 1))
-        start_time = time.time()
-
-        self.model.train()
+        start_time = super()._prepare_epoch(epoch)
 
         train_acc, train_loss, train_mtb_bce = MTBModel._reset_train_metrics()
         train_loss_batch, train_lm_acc_batch, train_mtb_bce_batch = [], [], []
@@ -249,17 +244,16 @@ class MTBModel:
                 self._mtb_bce[-1]
             )
         )
-        if self._mtb_bce[-1] < self._best_mtb_bce:
-            self._best_mtb_bce = self._mtb_bce[-1]
-            self._save_model(self.checkpoint_dir, epoch, best_model=True)
-        self._save_model(
-            self.checkpoint_dir, epoch,
+        new_baseline = super().save_on_epoch_end(
+            self._mtb_bce, self._best_mtb_bce, epoch
+        )
+        self._best_mtb_bce = (
+            new_baseline if new_baseline else self._best_mtb_bce
         )
 
     @classmethod
     def _reset_train_metrics(cls):
-        train_loss = 0.0
-        train_acc = 0.0
+        train_loss, train_acc = super()._reset_train_metrics()
         train_mtb_bce = 0.0
         return train_acc, train_loss, train_mtb_bce
 

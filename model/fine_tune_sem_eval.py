@@ -2,22 +2,22 @@ import logging
 import os
 import time
 
-from tqdm import tqdm
-
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
-from dataloaders.semeval_dataloader import SemEvalDataloader
 from matplotlib import pyplot as plt
 from ml_utils.common import valncreate_dir
-from model.bert import BertModel
-from model.relation_extractor import RelationExtractor
 from seqeval.metrics import f1_score, precision_score, recall_score
 from torch import optim
 from torch.nn import CrossEntropyLoss
 from torch.nn.utils import clip_grad_norm_
+from tqdm import tqdm
+
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from dataloaders.semeval_dataloader import SemEvalDataloader
+from model.bert import BertModel
+from model.relation_extractor import RelationExtractor
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -73,7 +73,8 @@ class SemEvalModel(RelationExtractor):
         if pretrained_mtb_model and os.path.isfile(pretrained_mtb_model):
             self._load_pretrained_model(pretrained_mtb_model)
 
-        self.train_on_gpu = torch.cuda.is_available()
+        # self.train_on_gpu = torch.cuda.is_available()
+        self.train_on_gpu = False
         if self.train_on_gpu:
             self.model.cuda()
 
@@ -149,14 +150,10 @@ class SemEvalModel(RelationExtractor):
         logger.info("Finished Training.")
         return self.model
 
-    def _train_epoch(self, epoch, pad_id, results_path, update_size):
-        logger.info("Starting epoch {0}".format(epoch + 1))
-        start_time = time.time()
+    def _train_epoch(self, epoch, pad_id, update_size):
+        start_time = super()._prepare_epoch(epoch)
 
-        self.model.train()
-
-        train_loss = 0.0
-        train_acc = 0.0
+        train_loss, train_acc = SemEvalModel._reset_train_metrics()
         train_loss_batch, train_acc_batch = [], []
 
         for i, data in enumerate(self.data_loader.train_loader):
@@ -176,14 +173,13 @@ class SemEvalModel(RelationExtractor):
                 logger.info(
                     "{0}/{1}: - ".format(
                         (i + 1) * self.config.get("batch_size"),
-                        len(self.data_loader.train_len),
+                        self.data_loader.train_len,
                     )
                     + "Train Loss: {0}, Train Accuracy: {1}".format(
                         train_loss_batch[-1], train_acc_batch[-1]
                     )
                 )
-                train_loss = 0.0
-                train_acc = 0.0
+                train_loss, train_acc = SemEvalModel._reset_train_metrics()
         self.scheduler.step()
         self._train_loss.append(np.mean(train_loss_batch))
         self._train_acc.append(np.mean(train_acc_batch))
@@ -197,11 +193,12 @@ class SemEvalModel(RelationExtractor):
         logger.info(f"Train Accuracy: {self._train_acc[-1]}")
         logger.info(f"Test Accuracy: {self._test_acc[-1]}")
         logger.info(f"Test F1: {self._test_f1[-1]}")
-        if self._test_f1[-1] > self._best_test_f1:
-            self._best_test_f1 = self._test_f1[-1]
-            self._save_model(self.checkpoint_dir, epoch, best_model=True)
-        self._save_model(
-            self.checkpoint_dir, epoch,
+
+        new_baseline = super().save_on_epoch_end(
+            self._test_f1, self._best_test_f1, epoch
+        )
+        self._best_test_f1 = (
+            new_baseline if new_baseline else self._best_test_f1
         )
 
     def _train_on_batch(self, e1_e2_start, labels, pad_id, x):
