@@ -1,11 +1,10 @@
 import logging
 
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from ml_utils.config_parser import ConfigParser
 from ml_utils.console_args import args
-
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from model.fine_tune_sem_eval import SemEvalModel
 from src.tasks.infer import infer_from_trained
-from train.fine_tune import FineTuner
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -18,7 +17,7 @@ config = ConfigParser(
 
 
 if __name__ == "__main__":
-    fine_tuner = FineTuner(config)
+    fine_tuner = SemEvalModel(config)
     net = fine_tuner.train()
 
     inferer = infer_from_trained(args, detect_entities=True)

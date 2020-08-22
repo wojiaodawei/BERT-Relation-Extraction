@@ -2,15 +2,15 @@ import logging
 import os
 import re
 
+from tqdm import tqdm
+
 import joblib
 import pandas as pd
 import torch
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
 from transformers import AlbertTokenizer, BertTokenizer
-
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL

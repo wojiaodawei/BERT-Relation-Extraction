@@ -188,7 +188,7 @@ class MTBModel:
         )
         data.to_csv(
             os.path.join(
-                results_path, "kpis_{0}.cvs".format(self.transformer)
+                results_path, "kpis_{0}.csv".format(self.transformer)
             ),
             index=False,
         )
