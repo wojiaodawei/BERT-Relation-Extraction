@@ -108,6 +108,9 @@ class MTBModel:
         """
         Runs the training.
         """
+        results_path = os.path.join(
+            "results", "pretraining", self.experiment_name, self.transformer
+        )
         best_model_path = os.path.join(
             self.checkpoint_dir, "best_model.pth.tar"
         )
@@ -126,32 +129,30 @@ class MTBModel:
         update_size = len(self.data_loader.train_generator) // 10
         for epoch in range(self._start_epoch, self.config.get("epochs")):
             self._train_epoch(epoch, update_size)
-            self._plot_results()
+            data = self._write_kpis(results_path)
+            self._plot_results(data, results_path)
         logger.info("Finished Training.")
         return self.model
 
-    def _plot_results(self):
-        results_path = os.path.join(
-            "results", "pretraining", self.experiment_name, self.transformer
-        )
-        valncreate_dir(results_path)
-
-        data = pd.DataFrame(
-            {
-                "Epoch": np.arange(len(self._train_loss)),
-                "Train Loss": self._train_loss,
-                "Train LM Accuracy": self._train_lm_acc,
-                "Val LM Accuracy": self._lm_acc,
-                "Val MTB Loss": self._mtb_bce,
-            }
-        )
-
+    def _plot_results(self, data, save_at):
         fig, ax = plt.subplots(figsize=(20, 20))
         sns.lineplot(x="Epoch", y="Train Loss", ax=ax, data=data, linewidth=4)
         ax.set_title("Training Loss")
         plt.savefig(
             os.path.join(
-                results_path, "train_loss_{0}.png".format(self.transformer)
+                save_at, "train_loss_{0}.png".format(self.transformer)
+            )
+        )
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(20, 20))
+        sns.lineplot(
+            x="Epoch", y="Val MTB Loss", ax=ax, data=data, linewidth=4
+        )
+        ax.set_title("Val MTB Binary Cross Entropy")
+        plt.savefig(
+            os.path.join(
+                save_at, "val_mtb_bce_{0}.png".format(self.transformer)
             )
         )
         plt.close(fig)
@@ -170,30 +171,28 @@ class MTBModel:
         )
         ax.set_title("LM Accuracy")
         plt.savefig(
-            os.path.join(
-                results_path, "lm_acc_{0}.png".format(self.transformer)
-            )
+            os.path.join(save_at, "lm_acc_{0}.png".format(self.transformer))
         )
         plt.close(fig)
 
-        fig, ax = plt.subplots(figsize=(20, 20))
-        sns.lineplot(
-            x="Epoch", y="Val MTB Loss", ax=ax, data=data, linewidth=4
+    def _write_kpis(self, results_path):
+        valncreate_dir(results_path)
+        data = pd.DataFrame(
+            {
+                "Epoch": np.arange(len(self._train_loss)),
+                "Train Loss": self._train_loss,
+                "Train LM Accuracy": self._train_lm_acc,
+                "Val LM Accuracy": self._lm_acc,
+                "Val MTB Loss": self._mtb_bce,
+            }
         )
-        ax.set_title("Val MTB Binary Cross Entropy")
-        plt.savefig(
-            os.path.join(
-                results_path, "val_mtb_bce_{0}.png".format(self.transformer)
-            )
-        )
-        plt.close(fig)
-
         data.to_csv(
             os.path.join(
                 results_path, "kpis_{0}.cvs".format(self.transformer)
             ),
             index=False,
         )
+        return data
 
     def _train_epoch(self, epoch, update_size):
         logger.info("Starting epoch {0}".format(epoch + 1))
@@ -202,9 +201,7 @@ class MTBModel:
         self.model.train()
 
         train_acc, train_loss, train_mtb_bce = MTBModel._reset_train_metrics()
-        train_loss_per_batch = []
-        train_lm_acc_per_batch = []
-        train_mtb_bce_per_batch = []
+        train_loss_batch, train_lm_acc_batch, train_mtb_bce_batch = [], [], []
 
         for i, data in enumerate(self.data_loader.train_generator):
             sequence, masked_label, e1_e2_start, blank_labels = data
@@ -216,15 +213,15 @@ class MTBModel:
                 train_acc += res[1]
                 train_mtb_bce += res[2]
             if (i % update_size) == (update_size - 1):
-                train_loss_per_batch.append(train_loss / update_size)
-                train_lm_acc_per_batch.append(train_acc / update_size)
-                train_mtb_bce_per_batch.append(train_mtb_bce / update_size)
+                train_loss_batch.append(train_loss / update_size)
+                train_lm_acc_batch.append(train_acc / update_size)
+                train_mtb_bce_batch.append(train_mtb_bce / update_size)
                 logger.info(
                     "{0}/{1} pools: - ".format((i + 1), self.train_len)
                     + "Train loss: {0}, Train LM accuracy: {1}, Train MTB Binary Cross Entropy {2}".format(
-                        train_loss_per_batch[-1],
-                        train_lm_acc_per_batch[-1],
-                        train_mtb_bce_per_batch[-1],
+                        train_loss_batch[-1],
+                        train_lm_acc_batch[-1],
+                        train_mtb_bce_batch[-1],
                     )
                 )
                 (
@@ -232,18 +229,19 @@ class MTBModel:
                     train_loss,
                     train_mtb_bce,
                 ) = MTBModel._reset_train_metrics()
+
         eval_result = self.evaluate()
         self._lm_acc += [eval_result[0]]
         self._mtb_bce += [eval_result[1]]
         self.scheduler.step()
-        self._train_loss.append(np.mean(train_loss_per_batch))
-        self._train_lm_acc.append(np.mean(train_lm_acc_per_batch))
+        self._train_loss.append(np.mean(train_loss_batch))
+        self._train_lm_acc.append(np.mean(train_lm_acc_batch))
         logger.info(
             "Epoch {0} finished, took {1} seconds.".format(
-                epoch, time.time() - start_time
+                epoch + 1, time.time() - start_time
             )
         )
-        logger.info("Loss: {0}".format(self._train_loss[-1]))
+        logger.info("Train Loss: {0}".format(self._train_loss[-1]))
         logger.info("Train LM Accuracy: {0}".format(self._train_lm_acc[-1]))
         logger.info("Validation LM Accuracy: {0}".format(self._lm_acc[-1]))
         logger.info(

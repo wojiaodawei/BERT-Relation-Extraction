@@ -1,4 +1,3 @@
-import gc
 import itertools
 import logging
 import os
@@ -100,39 +99,24 @@ class MTBPretrainDataLoader:
         preprocessed_file = os.path.join(
             "data", self.experiment_name, file_name + ".pkl"
         )
-        preprocessed_raw_data = os.path.join(
+        build_dataset_file = os.path.join(
             "data", data_file_name + "_extracted.pkl"
         )
 
         if os.path.isfile(preprocessed_file):
-            logger.info("Loaded pre-training data from saved file")
             with open(preprocessed_file, "rb") as pkl_file:
+                logger.info("Loaded pre-training data from saved file")
                 return joblib.load(pkl_file)
 
-        elif os.path.isfile(preprocessed_raw_data):
-            with open(preprocessed_raw_data, "rb") as in_file:
+        elif os.path.isfile(build_dataset_file):
+            with open(build_dataset_file, "rb") as in_file:
                 dataset = joblib.load(in_file)
         else:
-            logger.info("Loading Spacy NLP")
-            nlp = spacy.load("en_core_web_lg")
-
-            logger.info("Loading pre-training data")
+            logger.info("Building pretraining dataset from corpus")
             with open(data_path, "r", encoding="utf8") as f:
                 text = f.readlines()
-            dataset = []
-            for t in tqdm(text):
-                dataset.append(self._extract_entities(t, nlp))
-            dataset = pd.concat(dataset)
-            logger.info(
-                "Number of relation statements in corpus: {0}".format(
-                    len(dataset)
-                )
-            )
-            del nlp  # noqa: WPS420
-            gc.collect()
-            dataset.reset_index(inplace=True, drop=True)
-            with open(preprocessed_raw_data, "wb") as preprocessed_path:
-                joblib.dump(dataset, preprocessed_path)
+
+            dataset = self.build_dataset(text, build_dataset_file)
 
         valncreate_dir(os.path.join("data", self.experiment_name))
         dataset = self.preprocess(dataset)
@@ -142,6 +126,64 @@ class MTBPretrainDataLoader:
             "Saved pre-training corpus to {0}".format(preprocessed_file)
         )
         return dataset
+
+    def build_dataset(self, text, save_path):
+        """
+        Builds the Matching the Blanks pretraining dataset from the given
+        textcorpus.
+
+        Args:
+            text: List of text corpora
+            save_path: Where to save the file
+        """
+        dataset, x_map_rev = self._build_mapped_dataset(text)
+        logger.info(
+            "Number of relation statements in corpus: {0}".format(len(dataset))
+        )
+        for idx, r in enumerate(dataset["r"]):
+            x = r[0]
+            sent = x_map_rev[x]
+            dataset["r"][idx] = (
+                sent,
+                dataset["r"][idx][1],
+                dataset["r"][idx][2],
+            )
+        with open(save_path, "wb") as preprocessed_path:
+            joblib.dump(dataset, preprocessed_path)
+        return dataset
+
+    def _build_mapped_dataset(self, text):
+        logger.info("Loading Spacy NLP")
+        nlp = spacy.load("en_core_web_lg")
+        dataset = []
+        x_map = {}
+        x_map_rev = {}
+        j = 0
+        for t in tqdm(text):
+            dataset_t = self._extract_entities(t, nlp)
+            for idx, r in enumerate(dataset_t["r"]):
+                x = r[0]
+                x_join = " ".join(x)
+                if x_join not in x_map:
+                    x_map[x_join] = j
+                    x_map_rev[j] = x
+                    dataset_t["r"][idx] = (
+                        j,
+                        dataset_t["r"][idx][1],
+                        dataset_t["r"][idx][2],
+                    )
+                    j += 1
+                else:
+                    k = x_map[x_join]
+                    dataset_t["r"][idx] = (
+                        k,
+                        dataset_t["r"][idx][1],
+                        dataset_t["r"][idx][2],
+                    )
+            dataset.append(dataset_t)
+        dataset = pd.concat(dataset)
+        dataset.reset_index(inplace=True, drop=True)
+        return dataset, x_map_rev
 
     def _extract_entities(self, t, nlp):
         t = self._process_textlines([t])
@@ -316,7 +358,8 @@ class MTBPretrainDataLoader:
         spans = list(doc.ents) + list(doc.noun_chunks)
         spans = spacy.util.filter_spans(spans)
         with doc.retokenize() as retokenizer:
-            [retokenizer.merge(span) for span in spans]  # noqa: WPS428
+            for span in spans:
+                retokenizer.merge(span)
         doc_ents = doc.ents
         ents_text = set()
         ents = []
@@ -338,11 +381,9 @@ class MTBPretrainDataLoader:
                 continue
             if 1 <= (e2start - e1end) <= window_size:
                 # Find start of sentence
-                (
-                    r_start,
-                    r_end,
-                ) = MTBPretrainDataLoader._find_sentence_bondaries(
-                    doc, e1start, e2end, length_doc
+                r_start = MTBPretrainDataLoader._find_sent_start(doc, e1start)
+                r_end = MTBPretrainDataLoader._find_sent_end(
+                    doc, e2end, length_doc
                 )
 
                 # sentence should not be longer than window_size
@@ -368,7 +409,7 @@ class MTBPretrainDataLoader:
         return data
 
     @classmethod
-    def _find_sentence_bondaries(cls, doc, e1start, e2end, length_doc):
+    def _find_sent_start(cls, doc, e1start):
         punc_token = False
         start = e1start - 1
         if start > 0:
@@ -380,15 +421,20 @@ class MTBPretrainDataLoader:
             left_r = start + 2 if start > 0 else 0
         else:
             left_r = 0
+        return left_r
 
+    @classmethod
+    def _find_sent_end(cls, doc, e2end, length_doc):
+        sent_start = False
         start = e2end
         if start < length_doc:
-            while not punc_token:
-                punc_token = doc[start].is_punct
+            while not sent_start:
+                sent_start = doc[start].is_sent_end
+                sent_start = sent_start if sent_start else False
                 start += 1
                 if start == length_doc:
                     break
             right_r = start if start < length_doc else length_doc
         else:
             right_r = length_doc
-        return left_r, right_r
+        return right_r
