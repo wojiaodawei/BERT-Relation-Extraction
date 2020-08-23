@@ -7,16 +7,15 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from matplotlib import pyplot as plt
-from ml_utils.common import valncreate_dir
-from torch import nn, optim
-from torch.nn.utils import clip_grad_norm_
-
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_loader import MTBPretrainDataLoader
+from matplotlib import pyplot as plt
+from ml_utils.common import valncreate_dir
 from model.bert import BertModel
 from model.relation_extractor import RelationExtractor
 from src.train_funcs import Two_Headed_Loss
+from torch import nn, optim
+from torch.nn.utils import clip_grad_norm_
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL,
@@ -225,17 +224,11 @@ class MTBModel(RelationExtractor):
                     train_mtb_bce,
                 ) = MTBModel._reset_train_metrics()
 
-        eval_result = self.evaluate()
-        self._lm_acc += [eval_result[0]]
-        self._mtb_bce += [eval_result[1]]
-        self.scheduler.step()
         self._train_loss.append(np.mean(train_loss_batch))
         self._train_lm_acc.append(np.mean(train_lm_acc_batch))
-        logger.info(
-            "Epoch {0} finished, took {1} seconds.".format(
-                epoch + 1, time.time() - start_time
-            )
-        )
+
+        self.on_epoch_end(epoch, self._mtb_bce, self._best_mtb_bce)
+
         logger.info("Train Loss: {0}".format(self._train_loss[-1]))
         logger.info("Train LM Accuracy: {0}".format(self._train_lm_acc[-1]))
         logger.info("Validation LM Accuracy: {0}".format(self._lm_acc[-1]))
@@ -244,12 +237,32 @@ class MTBModel(RelationExtractor):
                 self._mtb_bce[-1]
             )
         )
-        new_baseline = super().save_on_epoch_end(
-            self._mtb_bce, self._best_mtb_bce, epoch
+
+        logger.info(
+            "Epoch finished, took {0} seconds.".format(
+                time.time() - start_time
+            )
+        )
+
+    def on_epoch_end(self, epoch, benchmark, baseline):
+        """
+        Function to run at the end of an epoch.
+
+        Runs the evaluation method, increments the scheduler, sets a new baseline and appends the KPIS.ä
+
+        Args:
+            epoch: Current epoch
+            benchmark: List of benchmark results
+            baseline: Current baseline. Best model performance so far
+        """
+        new_baseline, eval_result = super().on_epoch_end(
+            epoch, benchmark, baseline
         )
         self._best_mtb_bce = (
             new_baseline if new_baseline else self._best_mtb_bce
         )
+        self._mtb_bce.append(eval_result[0])
+        self._lm_acc.append(eval_result[1])
 
     @classmethod
     def _reset_train_metrics(cls):

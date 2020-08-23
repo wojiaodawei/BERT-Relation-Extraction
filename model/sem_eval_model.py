@@ -2,22 +2,22 @@ import logging
 import os
 import time
 
+from tqdm import tqdm
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from dataloaders.semeval_dataloader import SemEvalDataloader
 from matplotlib import pyplot as plt
 from ml_utils.common import valncreate_dir
+from model.bert import BertModel
+from model.relation_extractor import RelationExtractor
 from seqeval.metrics import f1_score, precision_score, recall_score
 from torch import optim
 from torch.nn import CrossEntropyLoss
 from torch.nn.utils import clip_grad_norm_
-from tqdm import tqdm
-
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
-from dataloaders.semeval_dataloader import SemEvalDataloader
-from model.bert import BertModel
-from model.relation_extractor import RelationExtractor
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -143,7 +143,7 @@ class SemEvalModel(RelationExtractor):
         pad_id = self.tokenizer.pad_token_id
         update_size = len(self.data_loader.train_loader) // 10
         for epoch in range(self._start_epoch, self.config.get("epochs")):
-            self._train_epoch(epoch, pad_id, results_path, update_size)
+            self._train_epoch(epoch, pad_id, update_size)
             data = self._write_kpis(results_path)
             self._plot_results(data, results_path)
 
@@ -163,7 +163,7 @@ class SemEvalModel(RelationExtractor):
             )
 
             train_loss += loss.item()
-            train_acc += SemEvalModel.evaluate(
+            train_acc += SemEvalModel.evaluate_inner(
                 classification_logits, labels, ignore_idx=-1
             )[0]
 
@@ -180,26 +180,42 @@ class SemEvalModel(RelationExtractor):
                     )
                 )
                 train_loss, train_acc = SemEvalModel._reset_train_metrics()
-        self.scheduler.step()
+
         self._train_loss.append(np.mean(train_loss_batch))
         self._train_acc.append(np.mean(train_acc_batch))
-        results = self.evaluate_results()
-        self._test_f1.append(results["f1"])
-        self._test_acc.append(results["accuracy"])
-        logger.info(
-            f"Epoch finished, took {time.time() - start_time} seconds."
-        )
+
+        self.on_epoch_end(epoch, self._test_f1, self._best_test_f1)
+
         logger.info(f"Train Loss: {self._train_loss[-1]}")
         logger.info(f"Train Accuracy: {self._train_acc[-1]}")
         logger.info(f"Test Accuracy: {self._test_acc[-1]}")
         logger.info(f"Test F1: {self._test_f1[-1]}")
 
-        new_baseline = super().save_on_epoch_end(
-            self._test_f1, self._best_test_f1, epoch
+        logger.info(
+            "Epoch finished, took {0} seconds.".format(
+                time.time() - start_time
+            )
+        )
+
+    def on_epoch_end(self, epoch, benchmark, baseline):
+        """
+        Function to run at the end of an epoch.
+
+        Runs the evaluation method, increments the scheduler, sets a new baseline and appends the KPIS.ä
+
+        Args:
+            epoch: Current epoch
+            benchmark: List of benchmark results
+            baseline: Current baseline. Best model performance so far
+        """
+        new_baseline, eval_result = super().on_epoch_end(
+            epoch, benchmark, baseline
         )
         self._best_test_f1 = (
             new_baseline if new_baseline else self._best_test_f1
         )
+        self._test_f1.append(eval_result["f1"])
+        self._test_acc.append(eval_result["accuracy"])
 
     def _train_on_batch(self, e1_e2_start, labels, pad_id, x):
         attention_mask = (x != pad_id).float()
@@ -237,7 +253,7 @@ class SemEvalModel(RelationExtractor):
         sns.lineplot(x="Epoch", y="Test F1", ax=ax, data=data, linewidth=4)
         ax.set_title("Test F1 Score")
         plt.savefig(
-            os.path.join(save_at, "test_f1{0}.png".format(self.transformer))
+            os.path.join(save_at, "test_f1_{0}.png".format(self.transformer))
         )
         plt.close(fig)
 
@@ -291,7 +307,7 @@ class SemEvalModel(RelationExtractor):
         )
 
     @classmethod
-    def evaluate(cls, output, labels, ignore_idx):
+    def evaluate_inner(cls, output, labels, ignore_idx):
         idxs = (labels != ignore_idx).squeeze()
         o_labels = torch.softmax(output, dim=1).max(1)[1]
         l = labels.squeeze()[idxs]
@@ -306,7 +322,7 @@ class SemEvalModel(RelationExtractor):
 
         return acc, (o, l)
 
-    def evaluate_results(self):
+    def evaluate(self):
         logger.info("Evaluating test samples")
         acc = 0
         out_labels = []
@@ -334,7 +350,7 @@ class SemEvalModel(RelationExtractor):
                     e1_e2_start=e1_e2_start,
                 )
 
-                accuracy, (o, l) = SemEvalModel.evaluate(
+                accuracy, (o, l) = SemEvalModel.evaluate_inner(
                     classification_logits, labels, ignore_idx=-1
                 )
                 out_labels.append([str(i) for i in o])

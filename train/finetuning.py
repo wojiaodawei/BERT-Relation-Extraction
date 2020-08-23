@@ -3,7 +3,7 @@ import logging
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from ml_utils.config_parser import ConfigParser
 from ml_utils.console_args import args
-from model.fine_tune_sem_eval import SemEvalModel
+from model.sem_eval_model import SemEvalModel
 from src.tasks.infer import infer_from_trained
 
 logging.basicConfig(
