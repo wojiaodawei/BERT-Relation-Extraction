@@ -140,7 +140,7 @@ class MTBPretrainDataLoader:
         logger.info(
             "Number of relation statements in corpus: {0}".format(len(dataset))
         )
-        for idx, r in enumerate(dataset["r"]):
+        for idx, r in tqdm(enumerate(dataset["r"]), total=len(dataset)):
             x = r[0]
             sent = x_map_rev[x]
             dataset["r"][idx] = (
