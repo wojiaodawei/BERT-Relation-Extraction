@@ -3,6 +3,7 @@ import os
 import time
 
 import torch
+
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
@@ -59,7 +60,6 @@ class RelationExtractor:
         )
         if benchmark[-1] > baseline:
             self._save_model(self.checkpoint_dir, epoch, best_model=True)
-            return benchmark[-1]
 
     def on_epoch_end(self, epoch: int, benchmark: list, baseline: int):
         """
@@ -73,7 +73,4 @@ class RelationExtractor:
             baseline: Current baseline. Best model performance so far
         """
         self.scheduler.step()
-        eval_results = self.evaluate()
-        new_baseline = self.save_on_epoch_end(benchmark, baseline, epoch)
-
-        return eval_results, new_baseline
+        return self.evaluate()
