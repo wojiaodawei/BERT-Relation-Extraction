@@ -95,6 +95,7 @@ class MTBPretrainDataLoader:
         data_file_name = os.path.splitext(data_file)[0]
         file_name = "_".join([data_file_name, self.config.get("transformer")])
         preprocessed_folder = os.path.join("data", self.experiment_name)
+        valncreate_dir(preprocessed_folder)
         preprocessed_file = os.path.join(
             preprocessed_folder, file_name + ".pkl"
         )
