@@ -3,9 +3,9 @@ import itertools
 import logging
 import os
 import re
-
+from functools import partial
 from tqdm import tqdm
-
+from multiprocessing import Pool
 import joblib
 import numpy as np
 import pandas as pd
@@ -166,54 +166,57 @@ class MTBPretrainDataLoader:
         e_map_rev = {}
         x_idx = 0
         e_idx = 0
+        extract_ents_with_nlp = partial(self._extract_entities, nlp=nlp)
+        with Pool(4) as p:
+            dataset = p.map(extract_ents_with_nlp, text)
 
-        for idx_t, t in enumerate(tqdm(text)):
-            dataset_t = self._extract_entities(t, nlp)
-            for idx, r in dataset_t.iterrows():
-                x = r.get("r")
-                e1 = r.get("e1")
-                e2 = r.get("e2")
-                x = x[0]
-                x_join = " ".join(x)
-                if x_join not in x_map:
-                    x_map[x_join] = x_idx
-                    x_map_rev[x_idx] = x
-                    dataset_t["r"][idx] = (
-                        x_idx,
-                        dataset_t["r"][idx][1],
-                        dataset_t["r"][idx][2],
-                    )
-                    x_idx += 1
-                else:
-                    k = x_map[x_join]
-                    dataset_t["r"][idx] = (
-                        k,
-                        dataset_t["r"][idx][1],
-                        dataset_t["r"][idx][2],
-                    )
-                if e1 not in e_map:
-                    e_map[e1] = e_idx
-                    e_map_rev[e_idx] = e1
-                    dataset_t["e1"][idx] = e_idx
-                    e_idx += 1
-
-                else:
-                    dataset_t["e1"][idx] = e_map[e1]
-
-                if e2 not in e_map:
-                    e_map[e2] = e_idx
-                    e_map_rev[e_idx] = e2
-                    dataset_t["e2"][idx] = e_idx
-                    e_idx += 1
-
-                else:
-                    dataset_t["e2"][idx] = e_map[e2]
-
-                if idx_t % 1000 == 0:
-                    gc.collect()
-
-            dataset.append(dataset_t)
-            text[idx_t] = None
+        # for idx_t, t in enumerate(tqdm(text)):
+        #     dataset_t = self._extract_entities(t, nlp)
+        #     for idx, r in dataset_t.iterrows():
+        #         x = r.get("r")
+        #         e1 = r.get("e1")
+        #         e2 = r.get("e2")
+        #         x = x[0]
+        #         x_join = " ".join(x)
+        #         if x_join not in x_map:
+        #             x_map[x_join] = x_idx
+        #             x_map_rev[x_idx] = x
+        #             dataset_t["r"][idx] = (
+        #                 x_idx,
+        #                 dataset_t["r"][idx][1],
+        #                 dataset_t["r"][idx][2],
+        #             )
+        #             x_idx += 1
+        #         else:
+        #             k = x_map[x_join]
+        #             dataset_t["r"][idx] = (
+        #                 k,
+        #                 dataset_t["r"][idx][1],
+        #                 dataset_t["r"][idx][2],
+        #             )
+        #         if e1 not in e_map:
+        #             e_map[e1] = e_idx
+        #             e_map_rev[e_idx] = e1
+        #             dataset_t["e1"][idx] = e_idx
+        #             e_idx += 1
+        #
+        #         else:
+        #             dataset_t["e1"][idx] = e_map[e1]
+        #
+        #         if e2 not in e_map:
+        #             e_map[e2] = e_idx
+        #             e_map_rev[e_idx] = e2
+        #             dataset_t["e2"][idx] = e_idx
+        #             e_idx += 1
+        #
+        #         else:
+        #             dataset_t["e2"][idx] = e_map[e2]
+        #
+        #         if idx_t % 1000 == 0:
+        #             gc.collect()
+        #
+        #     dataset.append(dataset_t)
+        #     text[idx_t] = None
         dataset = pd.concat(dataset)
         dataset.reset_index(inplace=True, drop=True)
         return dataset, x_map_rev, e_map_rev
