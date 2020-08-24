@@ -17,7 +17,7 @@ from seqeval.metrics import f1_score, precision_score, recall_score
 from torch import optim
 from torch.nn import CrossEntropyLoss
 from torch.nn.utils import clip_grad_norm_
-from utils.constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL

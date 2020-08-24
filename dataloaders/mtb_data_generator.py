@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
-from utils.constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
