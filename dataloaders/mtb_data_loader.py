@@ -2,9 +2,9 @@ import itertools
 import logging
 import os
 import re
-
+from multiprocessing import Pool
 from tqdm import tqdm
-
+from functools import partial
 import joblib
 import numpy as np
 import pandas as pd
@@ -153,7 +153,13 @@ class MTBPretrainDataLoader:
     def _extract_entities(self, texts, nlp, n_texts):
         texts = [self._process_textlines([t]) for t in texts]
         texts = [self.normalizer.normalize(t) for t in texts]
-        docs = nlp.pipe(texts)
+        docs = list(nlp.pipe(texts))
+        chunk_size = len(docs) // 10
+        docs_list = [docs[i:i + 10] for i in range(0, len(docs), chunk_size)]
+        pbar = tqdm(total=len(texts))
+        cpt = partial(self.create_pretraining_dataset, window_size=40, pbar=pbar)
+        with Pool(2) as p:
+            data = p.map(cpt, docs_list)
         return pd.DataFrame(
             self.create_pretraining_dataset(docs, n_texts, window_size=40),
             columns=["r", "e1", "e2"],
@@ -307,7 +313,7 @@ class MTBPretrainDataLoader:
             )  # Replace all CAPS with capitalize
             return sent
 
-    def create_pretraining_dataset(self, docs, n_docs, window_size: int = 40):
+    def create_pretraining_dataset(self, docs, pbar, window_size: int = 40):
         """
         Input: Chunk of raw text
         Output: modified corpus of triplets (relation statement, entity1, entity2)
@@ -317,7 +323,7 @@ class MTBPretrainDataLoader:
             window_size: Maximum windows size between to entities
         """
         data = []
-        for doc in tqdm(docs, total=n_docs):
+        for doc in docs:
             length_doc = len(doc)
 
             spans = list(doc.ents) + list(doc.noun_chunks)
@@ -372,6 +378,7 @@ class MTBPretrainDataLoader:
                         (e2start - r_start, e2end - r_start),
                     )
                     data.append((r, e1.text, e2.text))
+            pbar.update()
         return data
 
     @classmethod
