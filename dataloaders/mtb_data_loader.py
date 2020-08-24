@@ -1,22 +1,21 @@
-import gc
 import itertools
 import logging
 import os
 import re
-from functools import partial
+
 from tqdm import tqdm
-from multiprocessing import Pool
+
 import joblib
 import numpy as np
 import pandas as pd
 import spacy
 import torch
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_generator import MTBGenerator
 from ml_utils.common import valncreate_dir
 from ml_utils.normalizer import Normalizer
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertTokenizer
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -136,22 +135,10 @@ class MTBPretrainDataLoader:
             text: List of text corpora
             save_path: Where to save the file
         """
-        dataset, x_map_rev, e_map_rev = self._build_mapped_dataset(text)
+        dataset = self._build_mapped_dataset(text)
         logger.info(
             "Number of relation statements in corpus: {0}".format(len(dataset))
         )
-        for idx, r in tqdm(dataset.iterrows(), total=len(dataset)):
-            x = r.get("r")[0]
-            e1 = r.get("e1")
-            e2 = r.get("e2")
-            sent = x_map_rev[x]
-            dataset["r"][idx] = (
-                sent,
-                dataset["r"][idx][1],
-                dataset["r"][idx][2],
-            )
-            dataset["e1"][idx] = e_map_rev[e1]
-            dataset["e2"][idx] = e_map_rev[e2]
         with open(save_path, "wb") as preprocessed_path:
             joblib.dump(dataset, preprocessed_path)
         return dataset
@@ -159,74 +146,16 @@ class MTBPretrainDataLoader:
     def _build_mapped_dataset(self, text):
         logger.info("Loading Spacy NLP")
         nlp = spacy.load("en_core_web_lg")
-        dataset = []
-        x_map = {}
-        x_map_rev = {}
-        e_map = {}
-        e_map_rev = {}
-        x_idx = 0
-        e_idx = 0
-        extract_ents_with_nlp = partial(self._extract_entities, nlp=nlp)
-        with Pool(4) as p:
-            dataset = p.map(extract_ents_with_nlp, text)
 
-        # for idx_t, t in enumerate(tqdm(text)):
-        #     dataset_t = self._extract_entities(t, nlp)
-        #     for idx, r in dataset_t.iterrows():
-        #         x = r.get("r")
-        #         e1 = r.get("e1")
-        #         e2 = r.get("e2")
-        #         x = x[0]
-        #         x_join = " ".join(x)
-        #         if x_join not in x_map:
-        #             x_map[x_join] = x_idx
-        #             x_map_rev[x_idx] = x
-        #             dataset_t["r"][idx] = (
-        #                 x_idx,
-        #                 dataset_t["r"][idx][1],
-        #                 dataset_t["r"][idx][2],
-        #             )
-        #             x_idx += 1
-        #         else:
-        #             k = x_map[x_join]
-        #             dataset_t["r"][idx] = (
-        #                 k,
-        #                 dataset_t["r"][idx][1],
-        #                 dataset_t["r"][idx][2],
-        #             )
-        #         if e1 not in e_map:
-        #             e_map[e1] = e_idx
-        #             e_map_rev[e_idx] = e1
-        #             dataset_t["e1"][idx] = e_idx
-        #             e_idx += 1
-        #
-        #         else:
-        #             dataset_t["e1"][idx] = e_map[e1]
-        #
-        #         if e2 not in e_map:
-        #             e_map[e2] = e_idx
-        #             e_map_rev[e_idx] = e2
-        #             dataset_t["e2"][idx] = e_idx
-        #             e_idx += 1
-        #
-        #         else:
-        #             dataset_t["e2"][idx] = e_map[e2]
-        #
-        #         if idx_t % 1000 == 0:
-        #             gc.collect()
-        #
-        #     dataset.append(dataset_t)
-        #     text[idx_t] = None
-        dataset = pd.concat(dataset)
-        dataset.reset_index(inplace=True, drop=True)
-        return dataset, x_map_rev, e_map_rev
+        dataset = self._extract_entities(text, nlp, len(text))
+        return dataset.reset_index(drop=True)
 
-    def _extract_entities(self, t, nlp):
-        t = self._process_textlines([t])
-        t = self.normalizer.normalize(t)
-        doc = nlp(t)
+    def _extract_entities(self, texts, nlp, n_texts):
+        texts = [self._process_textlines([t]) for t in texts]
+        texts = [self.normalizer.normalize(t) for t in texts]
+        docs = nlp.pipe(texts)
         return pd.DataFrame(
-            self.create_pretraining_dataset(doc, window_size=40),
+            self.create_pretraining_dataset(docs, n_texts, window_size=40),
             columns=["r", "e1", "e2"],
         )
 
@@ -378,7 +307,7 @@ class MTBPretrainDataLoader:
             )  # Replace all CAPS with capitalize
             return sent
 
-    def create_pretraining_dataset(self, doc, window_size: int = 40):
+    def create_pretraining_dataset(self, docs, n_docs, window_size: int = 40):
         """
         Input: Chunk of raw text
         Output: modified corpus of triplets (relation statement, entity1, entity2)
@@ -387,61 +316,62 @@ class MTBPretrainDataLoader:
             doc: spacy doc
             window_size: Maximum windows size between to entities
         """
-        length_doc = len(doc)
         data = []
-        ents_list = []
+        for doc in tqdm(docs, total=n_docs):
+            length_doc = len(doc)
 
-        spans = list(doc.ents) + list(doc.noun_chunks)
-        spans = spacy.util.filter_spans(spans)
-        with doc.retokenize() as retokenizer:
-            for span in spans:
-                retokenizer.merge(span)
-        doc_ents = doc.ents
-        ents_text = set()
-        ents = []
-        for e in itertools.chain(spans, doc_ents):
-            if e.text not in ents_text:
-                ents.append(e)
-                ents_text.add(e.text)
+            spans = list(doc.ents) + list(doc.noun_chunks)
+            spans = spacy.util.filter_spans(spans)
+            with doc.retokenize() as retokenizer:
+                for span in spans:
+                    retokenizer.merge(span)
+            doc_ents = doc.ents
+            ents_text = set()
+            ents = []
+            for e in itertools.chain(spans, doc_ents):
+                if e.text not in ents_text:
+                    ents.append(e)
+                    ents_text.add(e.text)
 
-        for e1, e2 in itertools.product(ents, ents):
-            if e1 == e2:
-                continue
-            e1start = e1.start
-            e1end = e1.end - 1
-            e2start = e2.start
-            e2end = e2.end - 1
-            e1_has_numbers = re.search("[\d+]", e1.text)
-            e2_has_numbers = re.search("[\d+]", e2.text)
-            if e1_has_numbers or e2_has_numbers:
-                continue
-            if 1 <= (e2start - e1end) <= window_size:
-                # Find start of sentence
-                r_start = MTBPretrainDataLoader._find_sent_start(doc, e1start)
-                r_end = MTBPretrainDataLoader._find_sent_end(
-                    doc, e2end, length_doc
-                )
-
-                # sentence should not be longer than window_size
-                if (r_end - r_start) > window_size:
+            for e1, e2 in itertools.product(ents, ents):
+                if e1 == e2:
                     continue
+                e1start = e1.start
+                e1end = e1.end - 1
+                e2start = e2.start
+                e2end = e2.end - 1
+                e1_has_numbers = re.search("[\d+]", e1.text)
+                e2_has_numbers = re.search("[\d+]", e2.text)
+                if e1_has_numbers or e2_has_numbers:
+                    continue
+                if 1 <= (e2start - e1end) <= window_size:
+                    # Find start of sentence
+                    r_start = MTBPretrainDataLoader._find_sent_start(
+                        doc, e1start
+                    )
+                    r_end = MTBPretrainDataLoader._find_sent_end(
+                        doc, e2end, length_doc
+                    )
 
-                x = [token.text for token in doc[r_start:r_end]]
+                    # sentence should not be longer than window_size
+                    if (r_end - r_start) > window_size:
+                        continue
 
-                empty_token = all(not token for token in x)
-                emtpy_e1 = not e1.text
-                emtpy_e2 = not e2.text
-                emtpy_span = (e2start - e1end) < 1
-                if emtpy_e1 or emtpy_e2 or emtpy_span or empty_token:
-                    raise ValueError("Relation has wrong format")
+                    x = [token.text for token in doc[r_start:r_end]]
 
-                r = (
-                    x,
-                    (e1start - r_start, e1end - r_start),
-                    (e2start - r_start, e2end - r_start),
-                )
-                data.append((r, e1.text, e2.text))
-                ents_list.append((e1.text, e2.text))
+                    empty_token = all(not token for token in x)
+                    emtpy_e1 = not e1.text
+                    emtpy_e2 = not e2.text
+                    emtpy_span = (e2start - e1end) < 1
+                    if emtpy_e1 or emtpy_e2 or emtpy_span or empty_token:
+                        raise ValueError("Relation has wrong format")
+
+                    r = (
+                        x,
+                        (e1start - r_start, e1end - r_start),
+                        (e2start - r_start, e2end - r_start),
+                    )
+                    data.append((r, e1.text, e2.text))
         return data
 
     @classmethod
