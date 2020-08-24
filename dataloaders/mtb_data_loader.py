@@ -1,3 +1,4 @@
+import gc
 import itertools
 import logging
 import os
@@ -96,11 +97,12 @@ class MTBPretrainDataLoader:
         data_file = os.path.basename(data_path)
         data_file_name = os.path.splitext(data_file)[0]
         file_name = "_".join([data_file_name, self.config.get("transformer")])
+        preprocessed_folder = os.path.join("data", self.experiment_name)
         preprocessed_file = os.path.join(
-            "data", self.experiment_name, file_name + ".pkl"
+            preprocessed_folder, file_name + ".pkl"
         )
         build_dataset_file = os.path.join(
-            "data", data_file_name + "_extracted.pkl"
+            preprocessed_folder, data_file_name + "_extracted.pkl"
         )
 
         if os.path.isfile(preprocessed_file):
@@ -136,18 +138,24 @@ class MTBPretrainDataLoader:
             text: List of text corpora
             save_path: Where to save the file
         """
-        dataset, x_map_rev = self._build_mapped_dataset(text)
+        dataset, x_map, e_map = self._build_mapped_dataset(text)
         logger.info(
             "Number of relation statements in corpus: {0}".format(len(dataset))
         )
-        for idx, r in tqdm(enumerate(dataset["r"]), total=len(dataset)):
-            x = r[0]
+        x_map_rev = {v: k for k, v in x_map.items()}
+        e_map_rev = {v: k for k, v in e_map.items()}
+        for idx, r in tqdm(dataset.iterrows(), total=len(dataset)):
+            x = r.get("r")[0]
+            e1 = r.get("e1")
+            e2 = r.get("e2")
             sent = x_map_rev[x]
             dataset["r"][idx] = (
                 sent,
                 dataset["r"][idx][1],
                 dataset["r"][idx][2],
             )
+            dataset["e1"][idx] = e_map_rev[e1]
+            dataset["e2"][idx] = e_map_rev[e2]
         with open(save_path, "wb") as preprocessed_path:
             joblib.dump(dataset, preprocessed_path)
         return dataset
@@ -157,22 +165,26 @@ class MTBPretrainDataLoader:
         nlp = spacy.load("en_core_web_lg")
         dataset = []
         x_map = {}
-        x_map_rev = {}
-        j = 0
-        for t in tqdm(text):
+        e_map = {}
+        x_idx = 0
+        e_idx = 0
+
+        for idx_t, t in enumerate(tqdm(text)):
             dataset_t = self._extract_entities(t, nlp)
-            for idx, r in enumerate(dataset_t["r"]):
-                x = r[0]
+            for idx, r in dataset_t.iterrows():
+                x = r.get("r")
+                e1 = r.get("e1")
+                e2 = r.get("e2")
+                x = x[0]
                 x_join = " ".join(x)
                 if x_join not in x_map:
-                    x_map[x_join] = j
-                    x_map_rev[j] = x
+                    x_map[x_join] = x_idx
                     dataset_t["r"][idx] = (
-                        j,
+                        x_idx,
                         dataset_t["r"][idx][1],
                         dataset_t["r"][idx][2],
                     )
-                    j += 1
+                    x_idx += 1
                 else:
                     k = x_map[x_join]
                     dataset_t["r"][idx] = (
@@ -180,10 +192,30 @@ class MTBPretrainDataLoader:
                         dataset_t["r"][idx][1],
                         dataset_t["r"][idx][2],
                     )
+                if e1 not in e_map:
+                    e_map[e1] = e_idx
+                    dataset_t["e1"][idx] = e_idx
+                    e_idx += 1
+
+                else:
+                    dataset_t["e1"][idx] = e_map[e1]
+
+                if e2 not in e_map:
+                    e_map[e2] = e_idx
+                    dataset_t["e2"][idx] = e_idx
+                    e_idx += 1
+
+                else:
+                    dataset_t["e2"][idx] = e_map[e2]
+
+                if idx_t % 1000 == 0:
+                    gc.collect()
+
             dataset.append(dataset_t)
+            text[idx_t] = None
         dataset = pd.concat(dataset)
         dataset.reset_index(inplace=True, drop=True)
-        return dataset, x_map_rev
+        return dataset, x_map, e_map
 
     def _extract_entities(self, t, nlp):
         t = self._process_textlines([t])
