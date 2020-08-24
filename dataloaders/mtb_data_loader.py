@@ -14,7 +14,6 @@ import torch
 from dataloaders.mtb_data_generator import MTBGenerator
 from ml_utils.common import valncreate_dir
 from ml_utils.normalizer import Normalizer
-from pandarallel import pandarallel
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertTokenizer
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
@@ -23,8 +22,6 @@ logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
 )
 logger = logging.getLogger("__file__")
-
-pandarallel.initialize(nb_workers=8, use_memory_fs=False)
 
 
 class MTBPretrainDataLoader:
