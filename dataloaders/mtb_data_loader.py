@@ -136,12 +136,10 @@ class MTBPretrainDataLoader:
             text: List of text corpora
             save_path: Where to save the file
         """
-        dataset, x_map, e_map = self._build_mapped_dataset(text)
+        dataset, x_map_rev, e_map_rev = self._build_mapped_dataset(text)
         logger.info(
             "Number of relation statements in corpus: {0}".format(len(dataset))
         )
-        x_map_rev = {v: k for k, v in x_map.items()}
-        e_map_rev = {v: k for k, v in e_map.items()}
         for idx, r in tqdm(dataset.iterrows(), total=len(dataset)):
             x = r.get("r")[0]
             e1 = r.get("e1")
@@ -163,7 +161,9 @@ class MTBPretrainDataLoader:
         nlp = spacy.load("en_core_web_lg")
         dataset = []
         x_map = {}
+        x_map_rev = {}
         e_map = {}
+        e_map_rev = {}
         x_idx = 0
         e_idx = 0
 
@@ -177,6 +177,7 @@ class MTBPretrainDataLoader:
                 x_join = " ".join(x)
                 if x_join not in x_map:
                     x_map[x_join] = x_idx
+                    x_map_rev[x_idx] = x
                     dataset_t["r"][idx] = (
                         x_idx,
                         dataset_t["r"][idx][1],
@@ -192,6 +193,7 @@ class MTBPretrainDataLoader:
                     )
                 if e1 not in e_map:
                     e_map[e1] = e_idx
+                    e_map_rev[e_idx] = e1
                     dataset_t["e1"][idx] = e_idx
                     e_idx += 1
 
@@ -200,6 +202,7 @@ class MTBPretrainDataLoader:
 
                 if e2 not in e_map:
                     e_map[e2] = e_idx
+                    e_map_rev[e_idx] = e2
                     dataset_t["e2"][idx] = e_idx
                     e_idx += 1
 
@@ -213,7 +216,7 @@ class MTBPretrainDataLoader:
             text[idx_t] = None
         dataset = pd.concat(dataset)
         dataset.reset_index(inplace=True, drop=True)
-        return dataset, x_map, e_map
+        return dataset, x_map_rev, e_map_rev
 
     def _extract_entities(self, t, nlp):
         t = self._process_textlines([t])

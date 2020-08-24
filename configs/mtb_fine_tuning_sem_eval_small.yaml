@@ -8,5 +8,5 @@ transformer: bert-large-uncased
 batch_size: 64
 max_norm: 1.0
 epochs: 25
-lr: 0.00007
+lr: 0.0003
 resume: False
