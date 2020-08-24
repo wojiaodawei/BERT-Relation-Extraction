@@ -7,15 +7,16 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from dataloaders.mtb_data_loader import MTBPretrainDataLoader
 from matplotlib import pyplot as plt
 from ml_utils.common import valncreate_dir
+from torch import nn, optim
+from torch.nn.utils import clip_grad_norm_
+
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from dataloaders.mtb_data_loader import MTBPretrainDataLoader
 from model.bert import BertModel
 from model.relation_extractor import RelationExtractor
 from src.train_funcs import Two_Headed_Loss
-from torch import nn, optim
-from torch.nn.utils import clip_grad_norm_
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL,
@@ -255,14 +256,15 @@ class MTBModel(RelationExtractor):
             benchmark: List of benchmark results
             baseline: Current baseline. Best model performance so far
         """
-        new_baseline, eval_result = super().on_epoch_end(
-            epoch, benchmark, baseline
-        )
+        eval_result = super().on_epoch_end(epoch, benchmark, baseline)
         self._best_mtb_bce = (
-            new_baseline if new_baseline else self._best_mtb_bce
+            eval_result[1]
+            if eval_result[1] < self._best_mtb_bce
+            else self._best_mtb_bce
         )
-        self._mtb_bce.append(eval_result[0])
-        self._lm_acc.append(eval_result[1])
+        self._mtb_bce.append(eval_result[1])
+        self._lm_acc.append(eval_result[0])
+        super().on_epoch_end(self._mtb_bce, self._best_mtb_bce, epoch)
 
     @classmethod
     def _reset_train_metrics(cls):
