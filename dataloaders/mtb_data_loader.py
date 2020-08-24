@@ -17,7 +17,7 @@ from ml_utils.normalizer import Normalizer
 from pandarallel import pandarallel
 from torch.nn.utils.rnn import pad_sequence
 from transformers import BertTokenizer
-from utils.constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
