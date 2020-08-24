@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_loader import MTBPretrainDataLoader
 from matplotlib import pyplot as plt
 from ml_utils.common import valncreate_dir
@@ -16,6 +15,7 @@ from model.relation_extractor import RelationExtractor
 from src.train_funcs import Two_Headed_Loss
 from torch import nn, optim
 from torch.nn.utils import clip_grad_norm_
+from utils.constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL,
