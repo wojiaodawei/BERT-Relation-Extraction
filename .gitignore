@@ -185,3 +185,6 @@ models/*
 
 # results
 results/*
+
+# ssh
+ssh/*
