@@ -166,7 +166,7 @@ class MTBPretrainDataLoader:
     def _extract_entities(self, texts, nlp, n_texts):
         texts = [self._process_textlines([t]) for t in texts]
         texts = [self.normalizer.normalize(t) for t in texts]
-        docs = list(nlp.pipe(texts))
+        docs = nlp.pipe(texts)
         data, x_map_rev, e_map_rev = self.create_pretraining_dataset(docs, n_texts, window_size=40)
         return pd.DataFrame(data, columns=["r", "e1", "e2"]), x_map_rev, e_map_rev
 
