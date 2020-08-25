@@ -1,22 +1,22 @@
 import itertools
+import json
 import logging
 import os
 import re
 
-from multiprocessing.dummy import Pool
-from tqdm import tqdm
-from functools import partial
 import joblib
 import numpy as np
 import pandas as pd
 import spacy
 import torch
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
-from dataloaders.mtb_data_generator import MTBGenerator
 from ml_utils.common import valncreate_dir
 from ml_utils.normalizer import Normalizer
 from torch.nn.utils.rnn import pad_sequence
+from tqdm import tqdm
 from transformers import BertTokenizer
+
+from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from dataloaders.mtb_data_generator import MTBGenerator
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -136,7 +136,9 @@ class MTBPretrainDataLoader:
             text: List of text corpora
             save_path: Where to save the file
         """
-        dataset, x_map_rev, e_map_rev = self._build_mapped_dataset(text)
+        dataset, x_map_rev, e_map_rev = self._build_mapped_dataset(
+            text, save_path
+        )
         logger.info(
             "Number of relation statements in corpus: {0}".format(len(dataset))
         )
@@ -156,19 +158,46 @@ class MTBPretrainDataLoader:
             joblib.dump(dataset, preprocessed_path)
         return dataset
 
-    def _build_mapped_dataset(self, text):
+    def _build_mapped_dataset(self, text, save_path):
         logger.info("Loading Spacy NLP")
         nlp = spacy.load("en_core_web_lg")
+        save_dir = os.path.dirname(save_path)
+        dataset, x_map_rev, e_map_rev = self._extract_entities(
+            text, nlp, len(text)
+        )
+        dataset.reset_index(drop=True, inplace=True)
 
-        dataset, x_map_rev, e_map_rev = self._extract_entities(text, nlp, len(text))
-        return dataset.reset_index(drop=True), x_map_rev, e_map_rev
+        logger.info("Remove singletons")
+        idx_to_pop = set()
+        groups = dataset.groupby(["e1", "e2"])
+        for _group_id, group in tqdm(groups, total=len(groups)):
+            if len(group) < 2:
+                for i in group.index.values.tolist():
+                    idx_to_pop.add(i)
+        dataset = dataset.drop(index=idx_to_pop).reset_index(drop=True)
+        dataset.to_pickle(os.path.join(save_dir, "mapped.csv"))
+        with open(
+            os.path.join(save_dir, "x_map_rev.json"), "w", encoding="utf-8"
+        ) as x_f:
+            json.dump(x_map_rev, x_f, ensure_ascii=False, indent=4)
+        with open(
+            os.path.join(save_dir, "e_map_rev.json"), "w", encoding="utf-8"
+        ) as e_f:
+            json.dump(e_map_rev, e_f, ensure_ascii=False, indent=4)
+        return dataset, x_map_rev, e_map_rev
 
     def _extract_entities(self, texts, nlp, n_texts):
         texts = [self._process_textlines([t]) for t in texts]
         texts = [self.normalizer.normalize(t) for t in texts]
         docs = nlp.pipe(texts)
-        data, x_map_rev, e_map_rev = self.create_pretraining_dataset(docs, n_texts, window_size=40)
-        return pd.DataFrame(data, columns=["r", "e1", "e2"]), x_map_rev, e_map_rev
+        data, x_map_rev, e_map_rev = self.create_pretraining_dataset(
+            docs, n_texts, window_size=40
+        )
+        return (
+            pd.DataFrame(data, columns=["r", "e1", "e2"]),
+            x_map_rev,
+            e_map_rev,
+        )
 
     def preprocess(self, data: pd.DataFrame):
         """
@@ -318,14 +347,15 @@ class MTBPretrainDataLoader:
             )  # Replace all CAPS with capitalize
             return sent
 
-    def create_pretraining_dataset(self, docs, n_texts, window_size: int = 40):
+    def create_pretraining_dataset(self, docs, n_docs, window_size: int = 40):
         """
         Input: Chunk of raw text
         Output: modified corpus of triplets (relation statement, entity1, entity2)
 
         Args:
-            doc: spacy doc
+            docs: Iterable spacy doc
             window_size: Maximum windows size between to entities
+            n_docs: Number of docs
         """
         ovr_dataset = []
         x_map = {}
@@ -335,7 +365,7 @@ class MTBPretrainDataLoader:
         x_idx = 0
         e_idx = 0
 
-        for doc in tqdm(docs, total=n_texts):
+        for doc in tqdm(docs, total=n_docs):
             data = []
             spans = list(doc.ents) + list(doc.noun_chunks)
             spans = spacy.util.filter_spans(spans)
@@ -352,7 +382,9 @@ class MTBPretrainDataLoader:
 
             ee_product = list(itertools.product(ents, ents))
             for e in ee_product:
-                data.append(self.resolve_entities(e, doc=doc, window_size=window_size))
+                data.append(
+                    self._resolve_entities(e, doc=doc, window_size=window_size)
+                )
             data = [d for d in data if d]
             for idx, d in enumerate(data):
                 r = d[0]
@@ -396,7 +428,7 @@ class MTBPretrainDataLoader:
             ovr_dataset.extend(data)
         return ovr_dataset, x_map_rev, e_map_rev
 
-    def resolve_entities(self, e, doc, window_size):
+    def _resolve_entities(self, e, doc, window_size):
         e1, e2 = e
         if e1 == e2:
             return None
@@ -411,9 +443,7 @@ class MTBPretrainDataLoader:
         if 1 <= (e2start - e1end) <= window_size:
             length_doc = len(doc)
             # Find start of sentence
-            r_start = MTBPretrainDataLoader._find_sent_start(
-                doc, e1start
-            )
+            r_start = MTBPretrainDataLoader._find_sent_start(doc, e1start)
             r_end = MTBPretrainDataLoader._find_sent_end(
                 doc, e2end, length_doc
             )
