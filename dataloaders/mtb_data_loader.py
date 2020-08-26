@@ -18,6 +18,8 @@ from transformers import BertTokenizer
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_generator import MTBGenerator
 
+tqdm.pandas()
+
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
 )
@@ -142,40 +144,37 @@ class MTBPretrainDataLoader:
         logger.info(
             "Number of relation statements in corpus: {0}".format(len(dataset))
         )
-        for idx, r in tqdm(dataset.iterrows(), total=len(dataset)):
-            x = r.get("r")[0]
-            e1 = r.get("e1")
-            e2 = r.get("e2")
-            sent = x_map_rev[x]
-            dataset["r"][idx] = (
-                sent,
-                dataset["r"][idx][1],
-                dataset["r"][idx][2],
-            )
-            dataset["e1"][idx] = e_map_rev[e1]
-            dataset["e2"][idx] = e_map_rev[e2]
+        dataset = dataset.progress_apply(
+            MTBPretrainDataLoader._fill_dataset,
+            e_map=e_map_rev,
+            x_map=x_map_rev,
+            axis=1,
+        )
         with open(save_path, "wb") as preprocessed_path:
             joblib.dump(dataset, preprocessed_path)
         return dataset
 
-    def _build_mapped_dataset(self, text, save_path):
-        logger.info("Loading Spacy NLP")
-        nlp = spacy.load("en_core_web_lg")
-        save_dir = os.path.dirname(save_path)
-        dataset, x_map_rev, e_map_rev = self._extract_entities(
-            text, nlp, len(text)
+    @classmethod
+    def _fill_dataset(cls, r, x_map, e_map):
+        x = r.get("r")[0]
+        e1 = r.get("e1")
+        e2 = r.get("e2")
+        sent = x_map[x]
+        r["r"] = (
+            sent,
+            r["r"][1],
+            r["r"][2],
         )
-        dataset.reset_index(drop=True, inplace=True)
+        r["e1"] = e_map[e1]
+        r["e2"] = e_map[e2]
+        return r
 
-        logger.info("Remove singletons")
-        idx_to_pop = set()
-        groups = dataset.groupby(["e1", "e2"])
-        for _group_id, group in tqdm(groups, total=len(groups)):
-            if len(group) < 2:
-                for i in group.index.values.tolist():
-                    idx_to_pop.add(i)
-        dataset = dataset.drop(index=idx_to_pop).reset_index(drop=True)
-        dataset.to_pickle(os.path.join(save_dir, "mapped.csv"))
+    def _build_mapped_dataset(self, text, save_path):
+        dataset, x_map_rev, e_map_rev = self._extract_entities(text)
+        dataset.reset_index(drop=True, inplace=True)
+        dataset[["e1", "e2"]] = dataset[["e1", "e2"]].astype("int32")
+        save_dir = os.path.dirname(save_path)
+        dataset.to_hdf(os.path.join(save_dir, "mapped.h5"), key="df")
         with open(
             os.path.join(save_dir, "x_map_rev.json"), "w", encoding="utf-8"
         ) as x_f:
@@ -184,11 +183,19 @@ class MTBPretrainDataLoader:
             os.path.join(save_dir, "e_map_rev.json"), "w", encoding="utf-8"
         ) as e_f:
             json.dump(e_map_rev, e_f, ensure_ascii=False, indent=4)
+
+        dataset = dataset[dataset.duplicated(subset=["e1"], keep=False)]
+        dataset = dataset[dataset.duplicated(subset=["e2"], keep=False)]
+        dataset = dataset[dataset.duplicated(subset=["e1", "e2"], keep=False)]
+        dataset.reset_index(drop=True, inplace=True)
         return dataset, x_map_rev, e_map_rev
 
-    def _extract_entities(self, texts, nlp, n_texts):
+    def _extract_entities(self, texts):
         texts = [self._process_textlines([t]) for t in texts]
         texts = [self.normalizer.normalize(t) for t in texts]
+        n_texts = len(texts)
+        logger.info("Loading Spacy NLP")
+        nlp = spacy.load("en_core_web_lg")
         docs = nlp.pipe(texts)
         data, x_map_rev, e_map_rev = self.create_pretraining_dataset(
             docs, n_texts, window_size=40
