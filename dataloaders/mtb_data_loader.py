@@ -150,6 +150,7 @@ class MTBPretrainDataLoader:
             x_map=x_map_rev,
             axis=1,
         )
+        dataset.drop(columns=["x"], inplace=True)
         with open(save_path, "wb") as preprocessed_path:
             joblib.dump(dataset, preprocessed_path)
         return dataset
@@ -159,7 +160,7 @@ class MTBPretrainDataLoader:
         x = r.get("x")
         e1 = r.get("e1")
         e2 = r.get("e2")
-        r["r"] = x_map[x]
+        r["x_seq"] = x_map[x]
         r["e1"] = e_map[e1]
         r["e2"] = e_map[e2]
         return r
@@ -424,12 +425,14 @@ class MTBPretrainDataLoader:
                 data[idx] = new_r + [new_e1] + [new_e2]
             ovr_dataset.extend(data)
 
+        logger.info("Find singletons")
         idx_to_keep = set()
         for idx, d in tqdm(enumerate(ovr_dataset)):
             tuple_key = str(d[5]) + "_" + str(d[6])
             if ee_map_freq[tuple_key] > 1:
                 idx_to_keep.add(idx)
 
+        logger.info("Remove singletons")
         to_idx = 0
         for d in tqdm(ovr_dataset):
             tuple_key = str(d[5]) + "_" + str(d[6])
@@ -438,6 +441,7 @@ class MTBPretrainDataLoader:
                 to_idx += 1
         del ovr_dataset[to_idx:]
 
+        logger.info("Clean Entity Map")
         ovr_dataset = np.array(ovr_dataset)
         idx_to_pop = set()
         for e_key in tqdm(e_map_rev.keys()):
@@ -447,6 +451,7 @@ class MTBPretrainDataLoader:
         for idx in idx_to_pop:
             e_map_rev.pop(idx)
 
+        logger.info("Clean X Map")
         idx_to_pop = set()
         for x_key in tqdm(x_map_rev.keys()):
             if x_key not in ovr_dataset[:, 0]:
