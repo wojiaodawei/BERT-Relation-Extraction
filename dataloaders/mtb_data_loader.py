@@ -156,25 +156,18 @@ class MTBPretrainDataLoader:
 
     @classmethod
     def _fill_dataset(cls, r, x_map, e_map):
-        x = r.get("r")[0]
+        x = r.get("x")
         e1 = r.get("e1")
         e2 = r.get("e2")
-        sent = x_map[x]
-        r["r"] = (
-            sent,
-            r["r"][1],
-            r["r"][2],
-        )
+        r["r"] = x_map[x]
         r["e1"] = e_map[e1]
         r["e2"] = e_map[e2]
         return r
 
     def _build_mapped_dataset(self, text, save_path):
         dataset, x_map_rev, e_map_rev = self._extract_entities(text)
-        dataset.reset_index(drop=True, inplace=True)
-        dataset[["e1", "e2"]] = dataset[["e1", "e2"]].astype("int32")
         save_dir = os.path.dirname(save_path)
-        dataset.to_hdf(os.path.join(save_dir, "mapped.h5"), key="df")
+        np.save(os.path.join(save_dir, "mapped.npy"), dataset)
         with open(
             os.path.join(save_dir, "x_map_rev.json"), "w", encoding="utf-8"
         ) as x_f:
@@ -183,11 +176,18 @@ class MTBPretrainDataLoader:
             os.path.join(save_dir, "e_map_rev.json"), "w", encoding="utf-8"
         ) as e_f:
             json.dump(e_map_rev, e_f, ensure_ascii=False, indent=4)
-
-        dataset = dataset[dataset.duplicated(subset=["e1"], keep=False)]
-        dataset = dataset[dataset.duplicated(subset=["e2"], keep=False)]
-        dataset = dataset[dataset.duplicated(subset=["e1", "e2"], keep=False)]
-        dataset.reset_index(drop=True, inplace=True)
+        dataset = pd.DataFrame(
+            dataset,
+            columns=[
+                "x",
+                "e1_start",
+                "e1_end",
+                "e1_start",
+                "e1_end",
+                "e1",
+                "e2",
+            ],
+        )
         return dataset, x_map_rev, e_map_rev
 
     def _extract_entities(self, texts):
@@ -197,14 +197,7 @@ class MTBPretrainDataLoader:
         logger.info("Loading Spacy NLP")
         nlp = spacy.load("en_core_web_lg")
         docs = nlp.pipe(texts)
-        data, x_map_rev, e_map_rev = self.create_pretraining_dataset(
-            docs, n_texts, window_size=40
-        )
-        return (
-            pd.DataFrame(data, columns=["r", "e1", "e2"]),
-            x_map_rev,
-            e_map_rev,
-        )
+        return self.create_pretraining_dataset(docs, n_texts, window_size=40)
 
     def preprocess(self, data: pd.DataFrame):
         """
@@ -369,6 +362,7 @@ class MTBPretrainDataLoader:
         x_map_rev = {}
         e_map = {}
         e_map_rev = {}
+        ee_map_freq = {}
         x_idx = 0
         e_idx = 0
 
@@ -394,27 +388,18 @@ class MTBPretrainDataLoader:
                 )
             data = [d for d in data if d]
             for idx, d in enumerate(data):
-                r = d[0]
-                e1 = d[1]
-                e2 = d[2]
-                x = r[0]
+                x = d[0]
+                e1 = d[5]
+                e2 = d[6]
                 x_join = " ".join(x)
                 if x_join not in x_map:
                     x_map[x_join] = x_idx
                     x_map_rev[x_idx] = x
-                    new_r = (
-                        x_idx,
-                        r[1],
-                        r[2],
-                    )
+                    new_r = [x_idx, d[1], d[2], d[3], d[4]]
                     x_idx += 1
                 else:
                     k = x_map[x_join]
-                    new_r = (
-                        k,
-                        r[1],
-                        r[2],
-                    )
+                    new_r = [k, d[1], d[2], d[3], d[4]]
                 if e1 not in e_map:
                     e_map[e1] = e_idx
                     e_map_rev[e_idx] = e1
@@ -431,8 +416,45 @@ class MTBPretrainDataLoader:
                     e_idx += 1
                 else:
                     new_e2 = e_map[e2]
-                data[idx] = (new_r, new_e1, new_e2)
+                tuple_key = str(new_e1) + "_" + str(new_e2)
+                if tuple_key not in ee_map_freq:
+                    ee_map_freq[tuple_key] = 1
+                else:
+                    ee_map_freq[tuple_key] += 1
+                data[idx] = new_r + [new_e1] + [new_e2]
             ovr_dataset.extend(data)
+
+        idx_to_keep = set()
+        for idx, d in tqdm(enumerate(ovr_dataset)):
+            tuple_key = str(d[5]) + "_" + str(d[6])
+            if ee_map_freq[tuple_key] > 1:
+                idx_to_keep.add(idx)
+
+        to_idx = 0
+        for d in tqdm(ovr_dataset):
+            tuple_key = str(d[5]) + "_" + str(d[6])
+            if ee_map_freq[tuple_key] > 1:
+                ovr_dataset[to_idx] = d
+                to_idx += 1
+        del ovr_dataset[to_idx:]
+
+        ovr_dataset = np.array(ovr_dataset)
+        idx_to_pop = set()
+        for e_key in tqdm(e_map_rev.keys()):
+            if e_key not in ovr_dataset[:, [5, 6]].reshape(1, -1)[0]:
+                idx_to_pop.add(e_key)
+
+        for idx in idx_to_pop:
+            e_map_rev.pop(idx)
+
+        idx_to_pop = set()
+        for x_key in tqdm(x_map_rev.keys()):
+            if x_key not in ovr_dataset[:, 0]:
+                idx_to_pop.add(x_key)
+
+        for idx in idx_to_pop:
+            x_map_rev.pop(idx)
+
         return ovr_dataset, x_map_rev, e_map_rev
 
     def _resolve_entities(self, e, doc, window_size):
@@ -468,12 +490,14 @@ class MTBPretrainDataLoader:
             if emtpy_e1 or emtpy_e2 or emtpy_span or empty_token:
                 raise ValueError("Relation has wrong format")
 
-            r = (
+            r = [
                 x,
-                (e1start - r_start, e1end - r_start),
-                (e2start - r_start, e2end - r_start),
-            )
-            return (r, e1.text, e2.text)
+                e1start - r_start,
+                e1end - r_start,
+                e2start - r_start,
+                e2end - r_start,
+            ]
+            return r + [e1.text] + [e2.text]
 
     @classmethod
     def _find_sent_start(cls, doc, e1start):
