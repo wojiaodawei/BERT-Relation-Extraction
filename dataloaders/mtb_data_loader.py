@@ -253,9 +253,11 @@ class MTBPretrainDataLoader:
         ]
         data["r"] = r
 
-        pools = self.transform_data(data)
+        pools, e1_pool, e2_pool = self.transform_data(data)
         preprocessed_data = {
             "entities_pools": pools,
+            "e1_pool": e1_pool,
+            "e2_pool": e2_pool,
             "tokenized_relations": data,
         }
         return preprocessed_data
@@ -339,13 +341,13 @@ class MTBPretrainDataLoader:
         Args:
             df: Dataframe to use to generate QQ pairs.
         """
-        pools = self.generate_entities_pools(df)
+        pools, e1_pool, e2_pool = self.generate_entities_pools(df)
         for idx, pool in enumerate(pools):
             if np.random.random() > 0.75:
-                pools[idx] = pool + ("validation",)
+                pools[idx] = pool + ["validation"]
             else:
-                pools[idx] = pool + ("train",)
-        return pools
+                pools[idx] = pool + ["train"]
+        return pools, e1_pool, e2_pool
 
     def generate_entities_pools(self, data: pd.DataFrame):
         """
@@ -362,22 +364,13 @@ class MTBPretrainDataLoader:
         logger.info("Generating class pools")
         pool = []
         groups = data.groupby(["e1", "e2"])
-        groups_e1 = data.groupby(["e1"])
-        groups_e2 = data.groupby(["e2"])
+        e1_pool = data.groupby(["e1"]).groups
+        e2_pool = data.groupby(["e2"]).groups
         for idx, group in tqdm(groups, total=len(groups)):
-            e1, e2 = idx
-            data_e1 = groups_e1.get_group(e1).values.tolist()
-            data_e2 = groups_e2.get_group(e2).values.tolist()
-            e1_negatives = [i[-1] for i in data_e1 if i[2] != e2]
-            e2_negatives = [i[-1] for i in data_e2 if i[1] != e1]
-            entities_pool = (
-                group["relation_id"].values.tolist(),
-                e1_negatives,
-                e2_negatives,
-            )
+            entities_pool = group["relation_id"].values.tolist()
             pool.append(entities_pool)
         logger.info("Found {0} different pools".format(len(pool)))
-        return pool
+        return pool, e1_pool, e2_pool
 
     def _process_textlines(self, text):
         text = [self._clean_sent(sent) for sent in text]
