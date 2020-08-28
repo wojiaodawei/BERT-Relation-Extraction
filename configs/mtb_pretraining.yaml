@@ -6,11 +6,11 @@ normalization:
   - lowercase
   - html
   - urls
-min_pool_size: 8
+min_pool_size: 4
 # Model
 transformer: bert-base-uncased
 # Training
-batch_size: 2048 # Training batch size
+batch_size: 128 # Training batch size
 max_norm: 1.0 # Clipped gradient norm
 epochs: 25 # Number of Epochs
 lr: 0.0003 # learning rate

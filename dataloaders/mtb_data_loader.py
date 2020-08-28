@@ -364,8 +364,12 @@ class MTBPretrainDataLoader:
         logger.info("Generating class pools")
         pool = []
         groups = data.groupby(["e1", "e2"])
-        e1_pool = data.groupby(["e1"]).groups
-        e2_pool = data.groupby(["e2"]).groups
+        e1_pool = {}
+        e2_pool = {}
+        for idx, group in data.groupby(["e1"]):
+            e1_pool[idx] = list(group.index)
+        for idx, group in data.groupby(["e2"]):
+            e2_pool[idx] = list(group.index)
         for idx, group in tqdm(groups, total=len(groups)):
             entities_pool = group["relation_id"].values.tolist()
             pool.append(entities_pool)
