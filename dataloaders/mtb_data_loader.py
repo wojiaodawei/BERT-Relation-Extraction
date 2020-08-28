@@ -144,16 +144,18 @@ class MTBPretrainDataLoader:
         x_map_rev_path = os.path.join(save_dir, "x_map_rev.json")
         e_map_rev_path = os.path.join(save_dir, "e_map_rev.json")
         mapped_dataset_path = os.path.join(save_dir, "mapped.npy")
-        if (
+        data_exists = (
             os.path.isfile(x_map_rev_path)
             and os.path.isfile(e_map_rev_path)
             and os.path.isfile(mapped_dataset_path)
-        ):
+        )
+
+        if data_exists:
             with open(x_map_rev_path) as x_f:
                 x_map_rev = json.load(x_f)
                 x_map_rev = {int(k): v for k, v in x_map_rev.items()}
-            with open(e_map_rev_path) as x_f:
-                e_map_rev = json.load(x_f)
+            with open(e_map_rev_path) as e_f:
+                e_map_rev = json.load(e_f)
                 e_map_rev = {int(k): v for k, v in e_map_rev.items()}
             dataset = np.load(mapped_dataset_path)
         else:
@@ -166,18 +168,12 @@ class MTBPretrainDataLoader:
         return dataset, x_map_rev, e_map_rev
 
     @classmethod
-    def _build_dataframe(cls, r, x_map, e_map):
-        x = r.get("x")
-        e1 = r.get("e1")
-        e2 = r.get("e2")
-        r["r"] = (
-            x_map[x],
-            (r.get("e1_start"), r.get("e1_end")),
-            (r.get("e2_start"), r.get("e2_end")),
-        )
-        r["e1"] = e_map[e1]
-        r["e2"] = e_map[e2]
-        return r
+    def _build_dataframe(cls, d, x_map, e_map):
+        return [
+            (x_map[d[0]], (d[1], d[2]), (d[3], d[4])),
+            e_map[d[5]],
+            e_map[d[6]],
+        ]
 
     def _build_mapped_dataset(self, text, save_dir):
         dataset, x_map_rev, e_map_rev = self._extract_entities(text)
@@ -209,80 +205,52 @@ class MTBPretrainDataLoader:
 
         Args:
             data: dataset to preprocess
+            x_map_rev: Map X id -> X
+            e_map_rev: Map Entity id -> Entity
         """
-        ee_map_freq = {}
-        logger.info("Build entity frequency map")
-        for e1, e2 in tqdm(data[:, [5, 6]]):
-            tuple_key = str(e1) + "_" + str(e2)
-            if tuple_key not in ee_map_freq:
-                ee_map_freq[tuple_key] = 1
-            else:
-                ee_map_freq[tuple_key] += 1
-
         min_pool_size = self.config.get("min_pool_size")
         if min_pool_size > 2:
-            logger.info(
-                f"Remove Entity combinations with less than "
-                f"{min_pool_size} representations"
+            data, e_map_rev, x_map_rev = self.remove_underrepresented_pools(
+                data, e_map_rev, min_pool_size, x_map_rev
             )
-            (
-                data,
-                x_map_rev,
-                e_map_rev,
-            ) = MTBPretrainDataLoader.remove_low_freq_combs(
-                data, ee_map_freq, x_map_rev, e_map_rev, min_pool_size
-            )
-        data = pd.DataFrame(
-            data,
-            columns=[
-                "x",
-                "e1_start",
-                "e1_end",
-                "e2_start",
-                "e2_end",
-                "e1",
-                "e2",
-            ],
-        )
-
-        data = data.progress_apply(
-            MTBPretrainDataLoader._build_dataframe,
-            e_map=e_map_rev,
-            x_map=x_map_rev,
-            axis=1,
-        )
-        data.drop(
-            columns=["x", "e1_start", "e1_end", "e2_start", "e2_end"],
-            inplace=True,
-        )
-        data["relation_id"] = np.arange(0, len(data))
+        data = self.remap_content(data, e_map_rev, x_map_rev)
 
         logger.info("Add special tokens to relations")
-        normalized_relations = []
-        for _row_id, row in tqdm(data.iterrows(), total=len(data)):
-            relation = self._add_special_tokens(row)
-            normalized_relations.append(relation)
+        relations = []
+        for d in tqdm(data):
+            relation = self._add_special_tokens(d)
+            relations.append(relation)
 
         logger.info("Tokenizing relations")
         tokenized_relations = []
-        for n in tqdm(normalized_relations):
+        for n in tqdm(relations):
             tokenized_relations.append(
                 torch.IntTensor(self.tokenizer.convert_tokens_to_ids(n))
             )
-        del normalized_relations  # noqa: WPS 420
 
         tokenized_relations = pad_sequence(
             tokenized_relations,
             batch_first=True,
             padding_value=self.pad_token_id,
         )
+
+        data = pd.DataFrame(
+            data,
+            columns=[
+                "r",
+                "e1",
+                "e2",
+            ],
+        )
+
+        data["relation_id"] = np.arange(0, len(data))
+
         e_span1 = [(r[1][0] + 2, r[1][1] + 2) for r in data["r"]]
         e_span2 = [(r[2][0] + 4, r[2][1] + 4) for r in data["r"]]
         r = [
             (tr.numpy().tolist(), e1, e2)
             for tr, e1, e2 in zip(tokenized_relations, e_span1, e_span2)
         ]
-        del tokenized_relations  # noqa: WPS 420
         data["r"] = r
 
         pools = self.transform_data(data)
@@ -292,10 +260,44 @@ class MTBPretrainDataLoader:
         }
         return preprocessed_data
 
-    def _add_special_tokens(self, row):
-        r = row.get("r")[0]
-        e_span1 = row.get("r")[1]
-        e_span2 = row.get("r")[2]
+    def remap_content(self, data, e_map_rev, x_map_rev):
+        logger.info("Remap content of r")
+        data = data.tolist()
+        for idx, d in enumerate(tqdm(data)):
+            d = MTBPretrainDataLoader._build_dataframe(
+                d, e_map=e_map_rev, x_map=x_map_rev
+            )
+            data[idx] = d
+        return data
+
+    def remove_underrepresented_pools(
+        self, data, e_map_rev, min_pool_size, x_map_rev
+    ):
+        ee_map_freq = {}
+        logger.info("Build entity frequency map")
+        for e1, e2 in tqdm(data[:, [5, 6]]):
+            tuple_key = str(e1) + "_" + str(e2)
+            if tuple_key not in ee_map_freq:
+                ee_map_freq[tuple_key] = 1
+            else:
+                ee_map_freq[tuple_key] += 1
+        logger.info(
+            f"Remove Entity combinations with less than "
+            f"{min_pool_size} representations"
+        )
+        (
+            data,
+            x_map_rev,
+            e_map_rev,
+        ) = MTBPretrainDataLoader.remove_low_freq_combs(
+            data, ee_map_freq, x_map_rev, e_map_rev, min_pool_size
+        )
+        return data, e_map_rev, x_map_rev
+
+    def _add_special_tokens(self, d):
+        r = d[0][0]
+        e_span1 = d[0][1]
+        e_span2 = d[0][2]
         relation = [self.tokenizer.cls_token]
         for w_idx, w in enumerate(r):
             if w_idx == e_span1[0]:
