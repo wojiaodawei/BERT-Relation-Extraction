@@ -261,6 +261,14 @@ class MTBPretrainDataLoader:
         return preprocessed_data
 
     def remap_content(self, data, e_map_rev, x_map_rev):
+        """
+        Remaps the content of the mapped dataset to the actual dataset.
+
+        Args:
+            data: dataset to preprocess
+            x_map_rev: Map X id -> X
+            e_map_rev: Map Entity id -> Entity
+        """
         logger.info("Remap content of r")
         data = data.tolist()
         for idx, d in enumerate(tqdm(data)):
@@ -273,6 +281,15 @@ class MTBPretrainDataLoader:
     def remove_underrepresented_pools(
         self, data, e_map_rev, min_pool_size, x_map_rev
     ):
+        """
+        Removes entity combinations which do not have enough representations.
+
+        Args:
+            data: dataset to preprocess
+            x_map_rev: Map X id -> X
+            e_map_rev: Map Entity id -> Entity
+            min_pool_size: Minimum number of representations
+        """
         ee_map_freq = {}
         logger.info("Build entity frequency map")
         for e1, e2 in tqdm(data[:, [5, 6]]):
@@ -349,14 +366,14 @@ class MTBPretrainDataLoader:
         groups_e2 = data.groupby(["e2"])
         for idx, group in tqdm(groups, total=len(groups)):
             e1, e2 = idx
-            data_e1 = groups_e1.get_group(e1)
-            data_e2 = groups_e2.get_group(e2)
-            e1_negatives = data_e1.loc[data_e1["e2"] != e2, "relation_id"]
-            e2_negatives = data_e2.loc[data_e2["e1"] != e1, "relation_id"]
+            data_e1 = groups_e1.get_group(e1).values.tolist()
+            data_e2 = groups_e2.get_group(e2).values.tolist()
+            e1_negatives = [i[-1] for i in data_e1 if i[2] != e2]
+            e2_negatives = [i[-1] for i in data_e2 if i[1] != e1]
             entities_pool = (
                 group["relation_id"].values.tolist(),
-                e1_negatives.values.tolist(),
-                e2_negatives.values.tolist(),
+                e1_negatives,
+                e2_negatives,
             )
             pool.append(entities_pool)
         logger.info("Found {0} different pools".format(len(pool)))
