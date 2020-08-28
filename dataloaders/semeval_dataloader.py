@@ -2,14 +2,14 @@ import logging
 import os
 import re
 
-from tqdm import tqdm
-
 import joblib
 import pandas as pd
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 from transformers import AlbertTokenizer, BertTokenizer
+
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
@@ -242,7 +242,9 @@ class semeval_dataset(Dataset):
         )
         self.df.dropna(axis=0, inplace=True)
 
-    def __len__(self,):
+    def __len__(
+        self,
+    ):
         return len(self.df)
 
     def __getitem__(self, idx):
@@ -273,7 +275,10 @@ class Pad_Sequence:
     """
 
     def __init__(
-        self, seq_pad_value, label_pad_value=-1, label2_pad_value=-1,
+        self,
+        seq_pad_value,
+        label_pad_value=-1,
+        label2_pad_value=-1,
     ):
         self.seq_pad_value = seq_pad_value
         self.label_pad_value = label_pad_value

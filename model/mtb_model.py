@@ -19,7 +19,9 @@ from model.relation_extractor import RelationExtractor
 from src.train_funcs import Two_Headed_Loss
 
 logging.basicConfig(
-    format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL,
+    format=LOG_FORMAT,
+    datefmt=LOG_DATETIME_FORMAT,
+    level=LOG_LEVEL,
 )
 logger = logging.getLogger(__file__)
 
@@ -273,7 +275,11 @@ class MTBModel(RelationExtractor):
         return train_acc, train_loss, train_mtb_bce
 
     def _train_on_batch(
-        self, sequence, masked_label, e1_e2_start, blank_labels,
+        self,
+        sequence,
+        masked_label,
+        e1_e2_start,
+        blank_labels,
     ):
         masked_label = masked_label[
             (masked_label != self.tokenizer.pad_token_id)
@@ -284,14 +290,20 @@ class MTBModel(RelationExtractor):
             masked_label = masked_label.cuda()
         blanks_logits, lm_logits = self._get_logits(e1_e2_start, sequence)
         loss = self.criterion(
-            lm_logits, blanks_logits, masked_label, blank_labels,
+            lm_logits,
+            blanks_logits,
+            masked_label,
+            blank_labels,
         )
         loss.backward()
         clip_grad_norm_(self.model.parameters(), self.config.get("max_norm"))
         self.optimizer.step()
         self.optimizer.zero_grad()
         train_metrics = self.calculate_metrics(
-            lm_logits, blanks_logits, masked_label, blank_labels,
+            lm_logits,
+            blanks_logits,
+            masked_label,
+            blank_labels,
         )
         return loss.item(), train_metrics[0], train_metrics[1]
 
@@ -355,7 +367,10 @@ class MTBModel(RelationExtractor):
                 blanks_logits, lm_logits = self._get_logits(e1_e2_start, x)
 
                 loss = self.criterion(
-                    lm_logits, blanks_logits, masked_label, blank_labels,
+                    lm_logits,
+                    blanks_logits,
+                    masked_label,
+                    blank_labels,
                 )
 
                 total_loss += loss.cpu().numpy()
@@ -372,7 +387,11 @@ class MTBModel(RelationExtractor):
         )
 
     def calculate_metrics(
-        self, lm_logits, blanks_logits, masked_for_pred, blank_labels,
+        self,
+        lm_logits,
+        blanks_logits,
+        masked_for_pred,
+        blank_labels,
     ) -> tuple:
         """
         Calculates the performance metrics of the MTB model.
