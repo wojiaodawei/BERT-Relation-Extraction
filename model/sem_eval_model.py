@@ -2,22 +2,22 @@ import logging
 import os
 import time
 
-from tqdm import tqdm
-
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from dataloaders.semeval_dataloader import SemEvalDataloader
 from matplotlib import pyplot as plt
 from ml_utils.common import valncreate_dir
-from model.bert import BertModel
-from model.relation_extractor import RelationExtractor
-from seqeval.metrics import f1_score, precision_score, recall_score
 from torch import optim
 from torch.nn import CrossEntropyLoss
 from torch.nn.utils import clip_grad_norm_
+from tqdm import tqdm
+
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from dataloaders.semeval_dataloader import SemEvalDataloader
+from model.bert import BertModel
+from model.relation_extractor import RelationExtractor
+from seqeval.metrics import f1_score, precision_score, recall_score
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -262,7 +262,12 @@ class SemEvalModel(RelationExtractor):
         )
         fig, ax = plt.subplots(figsize=(20, 20))
         sns.lineplot(
-            x="Epoch", y="Accuracy", hue="Set", ax=ax, data=tmp, linewidth=4,
+            x="Epoch",
+            y="Accuracy",
+            hue="Set",
+            ax=ax,
+            data=tmp,
+            linewidth=4,
         )
         ax.set_title("Accuracy")
         plt.savefig(

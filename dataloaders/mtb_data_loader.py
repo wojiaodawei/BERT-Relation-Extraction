@@ -95,14 +95,17 @@ class MTBPretrainDataLoader:
         data_path = self.config.get("data")
         data_file = os.path.basename(data_path)
         data_file_name = os.path.splitext(data_file)[0]
-        file_name = "_".join([data_file_name, self.config.get("transformer")])
+        file_name = "_".join(
+            [
+                data_file_name,
+                self.config.get("transformer"),
+                str(self.config.get("min_pool_size")),
+            ]
+        )
         preprocessed_folder = os.path.join("data", self.experiment_name)
         valncreate_dir(preprocessed_folder)
         preprocessed_file = os.path.join(
             preprocessed_folder, file_name + ".pkl"
-        )
-        build_dataset_file = os.path.join(
-            preprocessed_folder, data_file_name + "_extracted.pkl"
         )
 
         if os.path.isfile(preprocessed_file):
@@ -110,18 +113,17 @@ class MTBPretrainDataLoader:
                 logger.info("Loaded pre-training data from saved file")
                 return joblib.load(pkl_file)
 
-        elif os.path.isfile(build_dataset_file):
-            with open(build_dataset_file, "rb") as in_file:
-                dataset = joblib.load(in_file)
         else:
             logger.info("Building pretraining dataset from corpus")
             with open(data_path, "r", encoding="utf8") as f:
                 text = f.readlines()
 
-            dataset = self.build_dataset(text, build_dataset_file)
+            dataset, x_map_rev, e_map_rev = self.build_dataset(
+                text, preprocessed_file
+            )
 
         valncreate_dir(os.path.join("data", self.experiment_name))
-        dataset = self.preprocess(dataset)
+        dataset = self.preprocess(dataset, x_map_rev, e_map_rev)
         with open(preprocessed_file, "wb") as fully_preprocessed_path:
             joblib.dump(dataset, fully_preprocessed_path)
         logger.info(
@@ -138,36 +140,47 @@ class MTBPretrainDataLoader:
             text: List of text corpora
             save_path: Where to save the file
         """
-        dataset, x_map_rev, e_map_rev = self._build_mapped_dataset(
-            text, save_path
-        )
+        save_dir = os.path.dirname(save_path)
+        x_map_rev_path = os.path.join(save_dir, "x_map_rev.json")
+        e_map_rev_path = os.path.join(save_dir, "e_map_rev.json")
+        mapped_dataset_path = os.path.join(save_dir, "mapped.npy")
+        if (
+            os.path.isfile(x_map_rev_path)
+            and os.path.isfile(e_map_rev_path)
+            and os.path.isfile(mapped_dataset_path)
+        ):
+            with open(x_map_rev_path) as x_f:
+                x_map_rev = json.load(x_f)
+                x_map_rev = {int(k): v for k, v in x_map_rev.items()}
+            with open(e_map_rev_path) as x_f:
+                e_map_rev = json.load(x_f)
+                e_map_rev = {int(k): v for k, v in e_map_rev.items()}
+            dataset = np.load(mapped_dataset_path)
+        else:
+            dataset, x_map_rev, e_map_rev = self._build_mapped_dataset(
+                text, save_dir
+            )
         logger.info(
             "Number of relation statements in corpus: {0}".format(len(dataset))
         )
-        dataset = dataset.progress_apply(
-            MTBPretrainDataLoader._fill_dataset,
-            e_map=e_map_rev,
-            x_map=x_map_rev,
-            axis=1,
-        )
-        dataset.drop(columns=["x"], inplace=True)
-        with open(save_path, "wb") as preprocessed_path:
-            joblib.dump(dataset, preprocessed_path)
-        return dataset
+        return dataset, x_map_rev, e_map_rev
 
     @classmethod
-    def _fill_dataset(cls, r, x_map, e_map):
+    def _build_dataframe(cls, r, x_map, e_map):
         x = r.get("x")
         e1 = r.get("e1")
         e2 = r.get("e2")
-        r["x_seq"] = x_map[x]
+        r["r"] = (
+            x_map[x],
+            (r.get("e1_start"), r.get("e1_end")),
+            (r.get("e2_start"), r.get("e2_end")),
+        )
         r["e1"] = e_map[e1]
         r["e2"] = e_map[e2]
         return r
 
-    def _build_mapped_dataset(self, text, save_path):
+    def _build_mapped_dataset(self, text, save_dir):
         dataset, x_map_rev, e_map_rev = self._extract_entities(text)
-        save_dir = os.path.dirname(save_path)
         np.save(os.path.join(save_dir, "mapped.npy"), dataset)
         with open(
             os.path.join(save_dir, "x_map_rev.json"), "w", encoding="utf-8"
@@ -177,18 +190,6 @@ class MTBPretrainDataLoader:
             os.path.join(save_dir, "e_map_rev.json"), "w", encoding="utf-8"
         ) as e_f:
             json.dump(e_map_rev, e_f, ensure_ascii=False, indent=4)
-        dataset = pd.DataFrame(
-            dataset,
-            columns=[
-                "x",
-                "e1_start",
-                "e1_end",
-                "e1_start",
-                "e1_end",
-                "e1",
-                "e2",
-            ],
-        )
         return dataset, x_map_rev, e_map_rev
 
     def _extract_entities(self, texts):
@@ -200,7 +201,7 @@ class MTBPretrainDataLoader:
         docs = nlp.pipe(texts)
         return self.create_pretraining_dataset(docs, n_texts, window_size=40)
 
-    def preprocess(self, data: pd.DataFrame):
+    def preprocess(self, data: np.ndarray, x_map_rev: dict, e_map_rev: dict):
         """
         Preprocess the dataset.
 
@@ -209,17 +210,54 @@ class MTBPretrainDataLoader:
         Args:
             data: dataset to preprocess
         """
-        logger.info("Clean dataset")
-        idx_to_pop = set()
-        groups = data.groupby(["e1", "e2"])
-        for _group_id, group in tqdm(groups, total=len(groups)):
-            if len(group) < self.config.get("min_pool_size", 2):
-                for i in group.index.values.tolist():
-                    idx_to_pop.add(i)
-        data = data.drop(index=idx_to_pop).reset_index(drop=True)
+        ee_map_freq = {}
+        logger.info("Build entity frequency map")
+        for e1, e2 in tqdm(data[:, [5, 6]]):
+            tuple_key = str(e1) + "_" + str(e2)
+            if tuple_key not in ee_map_freq:
+                ee_map_freq[tuple_key] = 1
+            else:
+                ee_map_freq[tuple_key] += 1
+
+        min_pool_size = self.config.get("min_pool_size")
+        if min_pool_size > 2:
+            logger.info(
+                f"Remove Entity combinations with less than "
+                f"{min_pool_size} representations"
+            )
+            (
+                data,
+                x_map_rev,
+                e_map_rev,
+            ) = MTBPretrainDataLoader.remove_low_freq_combs(
+                data, ee_map_freq, x_map_rev, e_map_rev, min_pool_size
+            )
+        data = pd.DataFrame(
+            data,
+            columns=[
+                "x",
+                "e1_start",
+                "e1_end",
+                "e2_start",
+                "e2_end",
+                "e1",
+                "e2",
+            ],
+        )
+
+        data = data.progress_apply(
+            MTBPretrainDataLoader._build_dataframe,
+            e_map=e_map_rev,
+            x_map=x_map_rev,
+            axis=1,
+        )
+        data.drop(
+            columns=["x", "e1_start", "e1_end", "e2_start", "e2_end"],
+            inplace=True,
+        )
         data["relation_id"] = np.arange(0, len(data))
 
-        logger.info("Normalizing relations")
+        logger.info("Add special tokens to relations")
         normalized_relations = []
         for _row_id, row in tqdm(data.iterrows(), total=len(data)):
             relation = self._add_special_tokens(row)
@@ -425,42 +463,54 @@ class MTBPretrainDataLoader:
                 data[idx] = new_r + [new_e1] + [new_e2]
             ovr_dataset.extend(data)
 
-        logger.info("Find singletons")
-        idx_to_keep = set()
-        for idx, d in tqdm(enumerate(ovr_dataset)):
-            tuple_key = str(d[5]) + "_" + str(d[6])
-            if ee_map_freq[tuple_key] > 1:
-                idx_to_keep.add(idx)
+        (
+            ovr_dataset,
+            x_map_rev,
+            e_map_rev,
+        ) = MTBPretrainDataLoader.remove_low_freq_combs(
+            ovr_dataset, ee_map_freq, x_map_rev, e_map_rev
+        )
 
-        logger.info("Remove singletons")
+        return ovr_dataset, x_map_rev, e_map_rev
+
+    @classmethod
+    def remove_low_freq_combs(
+        cls, data, ee_map_freq, x_map_rev, e_map_rev, min_count: int = 2
+    ):
+        if isinstance(data, np.ndarray):
+            data = data.tolist()
+        logger.info("Remove underrepresented entity combinations")
         to_idx = 0
-        for d in tqdm(ovr_dataset):
+        for d in tqdm(data):
             tuple_key = str(d[5]) + "_" + str(d[6])
-            if ee_map_freq[tuple_key] > 1:
-                ovr_dataset[to_idx] = d
+            if ee_map_freq[tuple_key] >= min_count:
+                data[to_idx] = d
                 to_idx += 1
-        del ovr_dataset[to_idx:]
+        del data[to_idx:]
+
+        data = np.array(data)
 
         logger.info("Clean Entity Map")
-        ovr_dataset = np.array(ovr_dataset)
+        unique_entities = set(np.unique(data[:, [5, 6]].reshape(1, -1)[0]))
         idx_to_pop = set()
         for e_key in tqdm(e_map_rev.keys()):
-            if e_key not in ovr_dataset[:, [5, 6]].reshape(1, -1)[0]:
+            if e_key not in unique_entities:
                 idx_to_pop.add(e_key)
 
         for idx in idx_to_pop:
             e_map_rev.pop(idx)
 
         logger.info("Clean X Map")
+        unique_x = set(np.unique(data[:, 0]))
         idx_to_pop = set()
         for x_key in tqdm(x_map_rev.keys()):
-            if x_key not in ovr_dataset[:, 0]:
+            if x_key not in unique_x:
                 idx_to_pop.add(x_key)
 
         for idx in idx_to_pop:
             x_map_rev.pop(idx)
 
-        return ovr_dataset, x_map_rev, e_map_rev
+        return data, x_map_rev, e_map_rev
 
     def _resolve_entities(self, e, doc, window_size):
         e1, e2 = e

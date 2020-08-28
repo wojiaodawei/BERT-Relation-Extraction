@@ -12,12 +12,11 @@ import os
 import random
 import re
 
-from tqdm import tqdm
-
 import pandas as pd
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 from ..misc import load_pickle, save_as_pickle
 
@@ -81,7 +80,10 @@ class Pad_Sequence:
     """
 
     def __init__(
-        self, seq_pad_value, label_pad_value=-1, label2_pad_value=-1,
+        self,
+        seq_pad_value,
+        label_pad_value=-1,
+        label2_pad_value=-1,
     ):
         self.seq_pad_value = seq_pad_value
         self.label_pad_value = label_pad_value
@@ -261,7 +263,9 @@ class fewrel_dataset(Dataset):
 
         self.seq_pad_value = seq_pad_value
 
-    def __len__(self,):
+    def __len__(
+        self,
+    ):
         return len(self.df)
 
     def __getitem__(self, idx):

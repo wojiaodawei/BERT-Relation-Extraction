@@ -7,7 +7,9 @@ import torch
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
-    format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL,
+    format=LOG_FORMAT,
+    datefmt=LOG_DATETIME_FORMAT,
+    level=LOG_LEVEL,
 )
 logger = logging.getLogger(__file__)
 
@@ -56,7 +58,8 @@ class RelationExtractor:
             epoch: Current epoch
         """
         self._save_model(
-            self.checkpoint_dir, epoch,
+            self.checkpoint_dir,
+            epoch,
         )
         if benchmark[-1] > baseline:
             self._save_model(self.checkpoint_dir, epoch, best_model=True)
