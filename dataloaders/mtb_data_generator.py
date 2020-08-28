@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
+
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
@@ -27,7 +28,7 @@ class MTBGenerator(Dataset):
 
         self.data = data
         self.data["entities_pools"] = [
-            ep for ep in self.data["entities_pools"] if ep[3] == dataset
+            ep[:-1] for ep in self.data["entities_pools"] if ep[-1] == dataset
         ]
         self.tokenizer = tokenizer
 
@@ -103,24 +104,34 @@ class MTBGenerator(Dataset):
 
     def __getitem__(self, pool_id):
         tokenized_relations = self.data["tokenized_relations"]
-        this_entity_pool = self.data["entities_pools"][pool_id]
+        positives = self.data["entities_pools"][pool_id]
+        e1 = set(self.data["tokenized_relations"].iloc[positives]["e1"])
+        e1 = list(e1)[0]
+        e2 = set(self.data["tokenized_relations"].iloc[positives]["e2"])
+        e2 = list(e2)[0]
+
+        e1_represent = set(self.data["e1_pool"][e1])
+        e2_represent = set(self.data["e2_pool"][e2])
+
+        e1_negatives = e1_represent.difference(e2_represent)
+        e2_negatives = e2_represent.difference(e1_represent)
+
         pos_idxs = np.random.choice(
-            this_entity_pool[0],
-            size=min(int(self.batch_size // 2), len(this_entity_pool[0])),
+            positives[0],
+            size=min(int(self.batch_size // 2), len(positives)),
             replace=False,
         )
-        non_easy_negatives = set(
-            this_entity_pool[0] + this_entity_pool[1] + this_entity_pool[2]
-        )
+        non_easy_negatives = e1_negatives.union(e2_negatives)
+
         negatives = set(tokenized_relations["relation_id"]).difference(
             non_easy_negatives
         )
         if np.random.uniform() > 0.5:  # Sample hard negatives
             if np.random.uniform() > 0.5:  # e2 negatives
-                negatives = this_entity_pool[1]
+                negatives = e1_negatives
 
             else:  # e1 negatives
-                negatives = this_entity_pool[2]
+                negatives = e2_negatives
         if not negatives:
             negatives = set(tokenized_relations["relation_id"]).difference(
                 non_easy_negatives
