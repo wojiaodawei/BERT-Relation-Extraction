@@ -117,7 +117,7 @@ class MTBGenerator(Dataset):
         e2_negatives = e2_represent.difference(e1_represent)
 
         pos_idxs = np.random.choice(
-            positives[0],
+            positives,
             size=min(int(self.batch_size // 2), len(positives)),
             replace=False,
         )
