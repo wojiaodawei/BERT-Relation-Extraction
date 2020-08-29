@@ -51,6 +51,7 @@ class MTBPretrainDataLoader:
             tokenizer=self.tokenizer,
             dataset="train",
         )
+        self.train_generator.__getitem__(0)
         self.validation_generator = MTBGenerator(
             data=self.data.copy(),
             batch_size=self.config.get("batch_size"),
@@ -109,8 +110,8 @@ class MTBPretrainDataLoader:
         )
 
         if os.path.isfile(preprocessed_file):
+            logger.info("Loading pre-training data from saved file")
             with open(preprocessed_file, "rb") as pkl_file:
-                logger.info("Loaded pre-training data from saved file")
                 return joblib.load(pkl_file)
 
         else:
@@ -122,13 +123,13 @@ class MTBPretrainDataLoader:
                 text, preprocessed_file
             )
 
-        valncreate_dir(os.path.join("data", self.experiment_name))
-        dataset = self.preprocess(dataset, x_map_rev, e_map_rev)
-        with open(preprocessed_file, "wb") as fully_preprocessed_path:
-            joblib.dump(dataset, fully_preprocessed_path)
-        logger.info(
-            "Saved pre-training corpus to {0}".format(preprocessed_file)
-        )
+            valncreate_dir(os.path.join("data", self.experiment_name))
+            dataset = self.preprocess(dataset, x_map_rev, e_map_rev)
+            with open(preprocessed_file, "wb") as fully_preprocessed_path:
+                joblib.dump(dataset, fully_preprocessed_path)
+            logger.info(
+                "Saved pre-training corpus to {0}".format(preprocessed_file)
+            )
         return dataset
 
     def build_dataset(self, text, save_path):
@@ -301,8 +302,8 @@ class MTBPretrainDataLoader:
             else:
                 ee_map_freq[tuple_key] += 1
         logger.info(
-            f"Remove Entity combinations with less than "
-            f"{min_pool_size} representations"
+            "Remove Entity combinations with less than "
+            + f"{min_pool_size} representations"
         )
         (
             data,
@@ -342,11 +343,10 @@ class MTBPretrainDataLoader:
             df: Dataframe to use to generate QQ pairs.
         """
         pools, e1_pool, e2_pool = self.generate_entities_pools(df)
-        for idx, pool in enumerate(pools):
-            if np.random.random() > 0.75:
-                pools[idx] = pool + ["validation"]
-            else:
-                pools[idx] = pool + ["train"]
+        for pool in pools:
+            pool["set"] = (
+                "validation" if np.random.random() > 0.75 else "train"
+            )
         return pools, e1_pool, e2_pool
 
     def generate_entities_pools(self, data: pd.DataFrame):
@@ -362,19 +362,24 @@ class MTBPretrainDataLoader:
             Common answer id.
         """
         logger.info("Generating class pools")
-        pool = []
         groups = data.groupby(["e1", "e2"])
         e1_pool = {}
         e2_pool = {}
-        for idx, group in data.groupby(["e1"]):
-            e1_pool[idx] = list(group.index)
-        for idx, group in data.groupby(["e2"]):
-            e2_pool[idx] = list(group.index)
+        entities_pools = []
+        for e1_idx, e1_group in data.groupby(["e1"]):
+            e1_pool[e1_idx] = list(e1_group.index)
+        for e2_idx, e2_group in data.groupby(["e2"]):
+            e2_pool[e2_idx] = list(e2_group.index)
         for idx, group in tqdm(groups, total=len(groups)):
-            entities_pool = group["relation_id"].values.tolist()
-            pool.append(entities_pool)
-        logger.info("Found {0} different pools".format(len(pool)))
-        return pool, e1_pool, e2_pool
+            entities_pools.append(
+                {
+                    "e1": idx[0],
+                    "e2": idx[1],
+                    "relation_ids": group["relation_id"].values.tolist(),
+                }
+            )
+        logger.info("Found {0} different pools".format(len(entities_pools)))
+        return entities_pools, e1_pool, e2_pool
 
     def _process_textlines(self, text):
         text = [self._clean_sent(sent) for sent in text]

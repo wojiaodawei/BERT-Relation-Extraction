@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 from ml_utils.path_operations import valncreate_dir
 from torch import nn, optim
 from torch.nn.utils import clip_grad_norm_
+from tqdm import tqdm
 
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_loader import MTBPretrainDataLoader
@@ -39,6 +40,7 @@ class MTBModel(RelationExtractor):
         super().__init__()
         self.experiment_name = config.get("experiment_name")
         self.transformer = config.get("transformer")
+        self.gradient_acc_steps = config.get("gradient_acc_steps")
         self.config = config
         self.data_loader = MTBPretrainDataLoader(self.config)
         self.train_len = len(self.data_loader.train_generator)
@@ -200,10 +202,11 @@ class MTBModel(RelationExtractor):
         train_acc, train_loss, train_mtb_bce = MTBModel._reset_train_metrics()
         train_loss_batch, train_lm_acc_batch, train_mtb_bce_batch = [], [], []
 
-        for i, data in enumerate(self.data_loader.train_generator):
+        for i, data in enumerate(tqdm(self.data_loader.train_generator)):
             sequence, masked_label, e1_e2_start, blank_labels = data
+            do_update = (i % self.gradient_acc_steps) == 0
             res = self._train_on_batch(
-                sequence, masked_label, e1_e2_start, blank_labels
+                sequence, masked_label, e1_e2_start, blank_labels, do_update
             )
             if res[0]:
                 train_loss += res[0]
@@ -266,7 +269,7 @@ class MTBModel(RelationExtractor):
         )
         self._mtb_bce.append(eval_result[1])
         self._lm_acc.append(eval_result[0])
-        super().on_epoch_end(self._mtb_bce, self._best_mtb_bce, epoch)
+        super().save_on_epoch_end(self._mtb_bce, self._best_mtb_bce, epoch)
 
     @classmethod
     def _reset_train_metrics(cls):
@@ -280,6 +283,7 @@ class MTBModel(RelationExtractor):
         masked_label,
         e1_e2_start,
         blank_labels,
+        do_update
     ):
         masked_label = masked_label[
             (masked_label != self.tokenizer.pad_token_id)
@@ -295,10 +299,12 @@ class MTBModel(RelationExtractor):
             masked_label,
             blank_labels,
         )
+        loss = loss / self.gradient_acc_steps
         loss.backward()
         clip_grad_norm_(self.model.parameters(), self.config.get("max_norm"))
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+        if do_update:
+            self.optimizer.step()
+            self.optimizer.zero_grad()
         train_metrics = self.calculate_metrics(
             lm_logits,
             blanks_logits,
