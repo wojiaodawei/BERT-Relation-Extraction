@@ -1,4 +1,5 @@
 import logging
+import random
 
 import numpy as np
 import torch
@@ -26,10 +27,18 @@ class MTBGenerator(Dataset):
         """
         self.batch_size = batch_size
 
-        self.data = data
-        self.data["entities_pools"] = [
-            ep[:-1] for ep in self.data["entities_pools"] if ep[-1] == dataset
+        self.entities_pools = data["entities_pools"]
+        self.tokenized_relations = data["tokenized_relations"]
+        self.len_data = len(self.tokenized_relations)
+        self.all_relation_ids = self.tokenized_relations[
+            "relation_id"
+        ].values.tolist()
+        self.entities_pools = [
+            ep for ep in self.entities_pools if ep["set"] == dataset
         ]
+        self.e1_pool = data["e1_pool"]
+        self.e2_pool = data["e2_pool"]
+
         self.tokenizer = tokenizer
 
         self.blank_idx = self.tokenizer.convert_tokens_to_ids("[BLANK]")
@@ -48,12 +57,12 @@ class MTBGenerator(Dataset):
         """
         Create a generator that iterate over the Sequence.
         """
-        yield from (
-            item for item in (self[i] for i in range(len(self)))
-        )  # noqa: WPS335
+        idx = list(range(len(self)))
+        random.shuffle(idx)
+        yield from (item for item in (self[i] for i in idx))  # noqa: WPS335
 
     def __len__(self):
-        return len(self.data["entities_pools"]) - 1
+        return len(self.entities_pools) - 1
 
     def _put_blanks(self, data):
         alpha = 0.7
@@ -103,49 +112,47 @@ class MTBGenerator(Dataset):
         return sequence, masked_for_pred, entities_start
 
     def __getitem__(self, pool_id):
-        tokenized_relations = self.data["tokenized_relations"]
-        positives = self.data["entities_pools"][pool_id]
-        e1 = set(self.data["tokenized_relations"].iloc[positives]["e1"])
-        e1 = list(e1)[0]
-        e2 = set(self.data["tokenized_relations"].iloc[positives]["e2"])
-        e2 = list(e2)[0]
+        pool = self.entities_pools[pool_id]
+        positives = list(pool["relation_ids"])
+        e1 = pool["e1"]
+        e2 = pool["e2"]
 
-        e1_represent = set(self.data["e1_pool"][e1])
-        e2_represent = set(self.data["e2_pool"][e2])
+        e1_represent = set(self.e1_pool[e1])
+        e2_represent = set(self.e2_pool[e2])
 
         e1_negatives = e1_represent.difference(e2_represent)
         e2_negatives = e2_represent.difference(e1_represent)
 
-        pos_idxs = np.random.choice(
-            positives,
-            size=min(int(self.batch_size // 2), len(positives)),
-            replace=False,
+        pos_idxs = random.sample(
+            positives, min(int(self.batch_size // 2), len(positives))
         )
-        non_easy_negatives = e1_negatives.union(e2_negatives)
 
-        negatives = set(tokenized_relations["relation_id"]).difference(
-            non_easy_negatives
-        )
+        neg_idxs = None
         if np.random.uniform() > 0.5:  # Sample hard negatives
             if np.random.uniform() > 0.5:  # e2 negatives
                 negatives = e1_negatives
-
             else:  # e1 negatives
                 negatives = e2_negatives
-        if not negatives:
-            negatives = set(tokenized_relations["relation_id"]).difference(
-                non_easy_negatives
+            neg_idxs = random.sample(
+                negatives, min(int(self.batch_size // 2), len(negatives))
             )
-        neg_idxs = np.random.choice(
-            list(negatives),
-            size=min(int(self.batch_size // 2), len(negatives)),
-            replace=False,
-        )
+
+        if not neg_idxs:
+            n_negs = min(int(self.batch_size // 2), len(self.all_relation_ids))
+            neg_idx = [
+                int(self.len_data * random.random()) for _ in range(n_negs)
+            ]
+            neg_idxs = [self.all_relation_ids[p] for p in neg_idx]
+            while any(n in pos_idxs for n in neg_idxs):
+                neg_idx = [
+                    int(self.len_data * random.random()) for _ in range(n_negs)
+                ]
+                neg_idxs = [self.all_relation_ids[p] for p in neg_idx]
 
         batch = []
 
         # process positive sample
-        pos_df = tokenized_relations.iloc[pos_idxs]
+        pos_df = self.tokenized_relations.iloc[pos_idxs]
         for _pos_idx, pos_row in pos_df.iterrows():
             e1_e2_start, masked_for_pred, x = self._preprocess(pos_row)
             batch.append(
@@ -153,7 +160,7 @@ class MTBGenerator(Dataset):
             )
 
         # process negative samples
-        negs_df = tokenized_relations.loc[neg_idxs]
+        negs_df = self.tokenized_relations.loc[neg_idxs]
         for _neg_idx, neg_row in negs_df.iterrows():
             e1_e2_start, masked_for_pred, x = self._preprocess(neg_row)
             batch.append(
