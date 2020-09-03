@@ -47,16 +47,15 @@ class MTBPretrainDataLoader:
         self.data = self.load_dataset()
         self.train_generator = MTBGenerator(
             data=self.data.copy(),
-            batch_size=self.config.get("batch_size"),
             tokenizer=self.tokenizer,
             dataset="train",
+            max_size=8,
         )
-        self.train_generator.__getitem__(0)
         self.validation_generator = MTBGenerator(
             data=self.data.copy(),
-            batch_size=self.config.get("batch_size"),
             tokenizer=self.tokenizer,
             dataset="validation",
+            max_size=8,
         )
 
     @classmethod
@@ -309,7 +308,7 @@ class MTBPretrainDataLoader:
             data,
             x_map_rev,
             e_map_rev,
-        ) = MTBPretrainDataLoader.remove_low_freq_combs(
+        ) = MTBPretrainDataLoader._remove_low_freq_combs(
             data, ee_map_freq, x_map_rev, e_map_rev, min_pool_size
         )
         return data, e_map_rev, x_map_rev
@@ -442,9 +441,11 @@ class MTBPretrainDataLoader:
                     ents_text.add(e.text)
 
             ee_product = list(itertools.product(ents, ents))
-            for e in ee_product:
+            for ee in ee_product:
                 data.append(
-                    self._resolve_entities(e, doc=doc, window_size=window_size)
+                    self._resolve_entities(
+                        ee, doc=doc, window_size=window_size
+                    )
                 )
             data = [d for d in data if d]
             for idx, d in enumerate(data):
@@ -488,14 +489,14 @@ class MTBPretrainDataLoader:
             ovr_dataset,
             x_map_rev,
             e_map_rev,
-        ) = MTBPretrainDataLoader.remove_low_freq_combs(
+        ) = MTBPretrainDataLoader._remove_low_freq_combs(
             ovr_dataset, ee_map_freq, x_map_rev, e_map_rev
         )
 
         return ovr_dataset, x_map_rev, e_map_rev
 
     @classmethod
-    def remove_low_freq_combs(
+    def _remove_low_freq_combs(
         cls, data, ee_map_freq, x_map_rev, e_map_rev, min_count: int = 2
     ):
         if isinstance(data, np.ndarray):
@@ -507,7 +508,7 @@ class MTBPretrainDataLoader:
             if ee_map_freq[tuple_key] >= min_count:
                 data[to_idx] = d
                 to_idx += 1
-        del data[to_idx:]
+        del data[to_idx:]  # noqa: WPS420
 
         data = np.array(data)
 

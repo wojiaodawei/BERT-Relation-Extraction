@@ -10,8 +10,9 @@ min_pool_size: 2
 # Model
 transformer: bert-base-uncased
 # Training
-batch_size: 128 # Training batch size
+batch_size: 2048 # Training batch size
 max_norm: 1.0 # Clipped gradient norm
-epochs: 100 # Number of Epochs
+epochs: 320000 # Number of Epochs
 lr: 0.0003 # learning rate
 resume: False # Warm Start
+save_best_model_only: True
