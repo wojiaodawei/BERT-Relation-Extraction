@@ -40,7 +40,6 @@ class MTBModel(RelationExtractor):
         super().__init__()
         self.experiment_name = config.get("experiment_name")
         self.transformer = config.get("transformer")
-        self.gradient_acc_steps = config.get("gradient_acc_steps")
         self.config = config
         self.data_loader = MTBPretrainDataLoader(self.config)
         self.train_len = len(self.data_loader.train_generator)
@@ -59,8 +58,11 @@ class MTBModel(RelationExtractor):
         if e1_id == e2_id == 1:
             raise ValueError("e1_id == e2_id == 1")
 
-        self.train_on_gpu = torch.cuda.is_available()
+        self.train_on_gpu = torch.cuda.is_available() and config.get(
+            "use_cuda", True
+        )
         if self.train_on_gpu:
+            logger.info("Train on GPU")
             self.model.cuda()
 
         self.criterion = Two_Headed_Loss(
@@ -89,6 +91,8 @@ class MTBModel(RelationExtractor):
         )
         valncreate_dir(self.checkpoint_dir)
 
+        self._points_seen = 0
+
     def load_best_model(self, checkpoint_dir: str):
         """
         Loads the current best model in the checkpoint directory.
@@ -106,10 +110,11 @@ class MTBModel(RelationExtractor):
             checkpoint["blanks_mse"],
         )
 
-    def train(self):
+    def train(self, **kwargs):
         """
         Runs the training.
         """
+        save_best_model_only = kwargs.get("save_best_model_only", False)
         results_path = os.path.join(
             "results", "pretraining", self.experiment_name, self.transformer
         )
@@ -130,7 +135,7 @@ class MTBModel(RelationExtractor):
         logger.info("Starting training process")
         update_size = len(self.data_loader.train_generator) // 10
         for epoch in range(self._start_epoch, self.config.get("epochs")):
-            self._train_epoch(epoch, update_size)
+            self._train_epoch(epoch, update_size, save_best_model_only)
             data = self._write_kpis(results_path)
             self._plot_results(data, results_path)
         logger.info("Finished Training.")
@@ -196,44 +201,37 @@ class MTBModel(RelationExtractor):
         )
         return data
 
-    def _train_epoch(self, epoch, update_size):
+    def _train_epoch(
+        self, epoch, update_size, save_best_model_only: bool = False
+    ):
         start_time = super()._prepare_epoch(epoch)
 
-        train_acc, train_loss, train_mtb_bce = MTBModel._reset_train_metrics()
-        train_loss_batch, train_lm_acc_batch, train_mtb_bce_batch = [], [], []
+        _train_acc, train_loss, train_mtb_bce = MTBModel._reset_train_metrics()
+        train_lm_acc, train_mtb_bce_batch = [], []
 
         for i, data in enumerate(tqdm(self.data_loader.train_generator)):
             sequence, masked_label, e1_e2_start, blank_labels = data
-            do_update = (i % self.gradient_acc_steps) == 0
             res = self._train_on_batch(
-                sequence, masked_label, e1_e2_start, blank_labels, do_update
+                sequence, masked_label, e1_e2_start, blank_labels
             )
             if res[0]:
-                train_loss += res[0]
-                train_acc += res[1]
-                train_mtb_bce += res[2]
+                train_loss.append(res[0])
+                train_lm_acc.append(res[1])
+                train_mtb_bce.append(res[2])
             if (i % update_size) == (update_size - 1):
-                train_loss_batch.append(train_loss / update_size)
-                train_lm_acc_batch.append(train_acc / update_size)
-                train_mtb_bce_batch.append(train_mtb_bce / update_size)
                 logger.info(
-                    "{0}/{1} pools: - ".format((i + 1), self.train_len)
-                    + "Train loss: {0}, Train LM accuracy: {1}, Train MTB Binary Cross Entropy {2}".format(
-                        train_loss_batch[-1],
-                        train_lm_acc_batch[-1],
-                        train_mtb_bce_batch[-1],
-                    )
+                    f"{i+1}/{self.train_len} pools: - "
+                    + f"Train loss: {np.mean(train_loss)}, "
+                    + f"Train LM accuracy: {np.mean(train_lm_acc)}, "
+                    + f"Train MTB Binary Cross Entropy {np.mean(train_mtb_bce)}"
                 )
-                (
-                    train_acc,
-                    train_loss,
-                    train_mtb_bce,
-                ) = MTBModel._reset_train_metrics()
 
-        self._train_loss.append(np.mean(train_loss_batch))
-        self._train_lm_acc.append(np.mean(train_lm_acc_batch))
+        self._train_loss.append(np.mean(train_loss))
+        self._train_lm_acc.append(np.mean(train_lm_acc))
 
-        self.on_epoch_end(epoch, self._mtb_bce, self._best_mtb_bce)
+        self.on_epoch_end(
+            epoch, self._mtb_bce, self._best_mtb_bce, save_best_model_only
+        )
 
         logger.info("Train Loss: {0}".format(self._train_loss[-1]))
         logger.info("Train LM Accuracy: {0}".format(self._train_lm_acc[-1]))
@@ -250,7 +248,9 @@ class MTBModel(RelationExtractor):
             )
         )
 
-    def on_epoch_end(self, epoch, benchmark, baseline):
+    def on_epoch_end(
+        self, epoch, benchmark, baseline, save_best_model_only: bool = False
+    ):
         """
         Function to run at the end of an epoch.
 
@@ -269,46 +269,46 @@ class MTBModel(RelationExtractor):
         )
         self._mtb_bce.append(eval_result[1])
         self._lm_acc.append(eval_result[0])
-        super().save_on_epoch_end(self._mtb_bce, self._best_mtb_bce, epoch)
+        super().save_on_epoch_end(
+            self._mtb_bce, self._best_mtb_bce, epoch, save_best_model_only
+        )
 
     @classmethod
     def _reset_train_metrics(cls):
         train_loss, train_acc = super()._reset_train_metrics()
-        train_mtb_bce = 0.0
+        train_mtb_bce = []
         return train_acc, train_loss, train_mtb_bce
 
     def _train_on_batch(
         self,
         sequence,
-        masked_label,
+        mskd_label,
         e1_e2_start,
         blank_labels,
-        do_update
     ):
-        masked_label = masked_label[
-            (masked_label != self.tokenizer.pad_token_id)
-        ]
-        if masked_label.shape[0] == 0:
+        mskd_label = mskd_label[(mskd_label != self.tokenizer.pad_token_id)]
+        if mskd_label.shape[0] == 0:
             return None, None, None
         if self.train_on_gpu:
-            masked_label = masked_label.cuda()
+            mskd_label = mskd_label.cuda()
         blanks_logits, lm_logits = self._get_logits(e1_e2_start, sequence)
         loss = self.criterion(
             lm_logits,
             blanks_logits,
-            masked_label,
+            mskd_label,
             blank_labels,
         )
-        loss = loss / self.gradient_acc_steps
         loss.backward()
+        self._points_seen += len(sequence)
         clip_grad_norm_(self.model.parameters(), self.config.get("max_norm"))
-        if do_update:
+        if self._points_seen > self.config.get("batch_size"):
             self.optimizer.step()
             self.optimizer.zero_grad()
+            self._points_seen = 0
         train_metrics = self.calculate_metrics(
             lm_logits,
             blanks_logits,
-            masked_label,
+            mskd_label,
             blank_labels,
         )
         return loss.item(), train_metrics[0], train_metrics[1]

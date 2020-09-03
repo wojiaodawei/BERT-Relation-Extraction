@@ -15,7 +15,7 @@ logger = logging.getLogger("__file__")
 
 
 class MTBGenerator(Dataset):
-    def __init__(self, data, tokenizer, dataset: str, batch_size=None):
+    def __init__(self, data, tokenizer, dataset: str, max_size: int = None):
         """
         Data Generator for Matching the blanks models.
 
@@ -23,9 +23,8 @@ class MTBGenerator(Dataset):
             data: Dataset containing information about the relations and the position of the entities and the dataset
             tokenizer: Huggingface transformers tokenizer to use
             dataset: Dataset type of the generator. May be train, validation or test
-            batch_size: Batch size
+            max_size: Maximum size of the batch
         """
-        self.batch_size = batch_size
 
         self.entities_pools = data["entities_pools"]
         self.tokenized_relations = data["tokenized_relations"]
@@ -52,6 +51,8 @@ class MTBGenerator(Dataset):
 
         self.cls_idx = self.tokenizer.cls_token_id
         self.sep_idx = self.tokenizer.sep_token_id
+
+        self.max_size = max_size
 
     def __iter__(self):
         """
@@ -123,9 +124,12 @@ class MTBGenerator(Dataset):
         e1_negatives = e1_represent.difference(e2_represent)
         e2_negatives = e2_represent.difference(e1_represent)
 
-        pos_idxs = random.sample(
-            positives, min(int(self.batch_size // 2), len(positives))
+        n_positives = (
+            min(self.max_size, len(positives))
+            if self.max_size
+            else len(positives)
         )
+        pos_idxs = random.sample(positives, n_positives)
 
         neg_idxs = None
         if np.random.uniform() > 0.5:  # Sample hard negatives
@@ -133,19 +137,24 @@ class MTBGenerator(Dataset):
                 negatives = e1_negatives
             else:  # e1 negatives
                 negatives = e2_negatives
-            neg_idxs = random.sample(
-                negatives, min(int(self.batch_size // 2), len(negatives))
+            n_negatives = (
+                min(self.max_size, len(negatives))
+                if self.max_size
+                else len(negatives)
             )
+            neg_idxs = random.sample(negatives, n_negatives)
 
         if not neg_idxs:
-            n_negs = min(int(self.batch_size // 2), len(self.all_relation_ids))
+            n_negatives = min(8, self.len_data)
             neg_idx = [
-                int(self.len_data * random.random()) for _ in range(n_negs)
+                int(self.len_data * random.random())
+                for _ in range(n_negatives)
             ]
             neg_idxs = [self.all_relation_ids[p] for p in neg_idx]
             while any(n in pos_idxs for n in neg_idxs):
                 neg_idx = [
-                    int(self.len_data * random.random()) for _ in range(n_negs)
+                    int(self.len_data * random.random())
+                    for _ in range(n_negatives)
                 ]
                 neg_idxs = [self.all_relation_ids[p] for p in neg_idx]
 

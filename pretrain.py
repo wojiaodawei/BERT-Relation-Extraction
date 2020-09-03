@@ -2,8 +2,9 @@ import logging
 
 from ml_utils.config_parser import ConfigParser
 from ml_utils.console_args import args
-from model.mtb_model import MTBModel
+
 from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from model.mtb_model import MTBModel
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -16,4 +17,6 @@ config = ConfigParser(
 
 if __name__ == "__main__":
     pretrainer = MTBModel(config)
-    output = pretrainer.train()
+    output = pretrainer.train(
+        save_best_model_only=config.get("save_best_model_only")
+    )
