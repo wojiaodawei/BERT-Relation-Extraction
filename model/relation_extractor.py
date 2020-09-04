@@ -42,11 +42,17 @@ class RelationExtractor:
 
     @classmethod
     def _reset_train_metrics(cls):
-        train_loss = 0.0
-        train_acc = 0.0
+        train_loss = []
+        train_acc = []
         return train_acc, train_loss
 
-    def save_on_epoch_end(self, benchmark: list, baseline: int, epoch: int):
+    def save_on_epoch_end(
+        self,
+        benchmark: list,
+        baseline: int,
+        epoch: int,
+        save_best_model_only: bool = False,
+    ):
         """
         Saves current moddel at the end of the epoch.
 
@@ -57,11 +63,12 @@ class RelationExtractor:
             baseline: Current baseline. Best model performance so far
             epoch: Current epoch
         """
-        self._save_model(
-            self.checkpoint_dir,
-            epoch,
-        )
-        if benchmark[-1] > baseline:
+        if not save_best_model_only:
+            self._save_model(
+                self.checkpoint_dir,
+                epoch,
+            )
+        if benchmark[-1] <= baseline:
             self._save_model(self.checkpoint_dir, epoch, best_model=True)
 
     def on_epoch_end(self, epoch: int, benchmark: list, baseline: int):
