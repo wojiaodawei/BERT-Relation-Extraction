@@ -8,7 +8,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 from matplotlib import pyplot as plt
-from ml_utils.common import valncreate_dir
+from ml_utils.path_operations import valncreate_dir
 from torch import nn, optim
 from torch.nn.utils import clip_grad_norm_
 

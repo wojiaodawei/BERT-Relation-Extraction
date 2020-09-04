@@ -1,0 +1,5 @@
+spacy==2.3.2
+git+ssh://git@github.com/ebot7/ml_utils.git@v1.4.6#egg=ml_utils[normalizer]
+transformers==3.0.2
+matplotlib==3.3.0
+seaborn==0.10.1
