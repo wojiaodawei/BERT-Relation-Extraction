@@ -1,6 +1,5 @@
 import itertools
 import json
-import logging
 import os
 import re
 
@@ -15,15 +14,10 @@ from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 from transformers import BertTokenizer
 
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_generator import MTBGenerator
+from logger import logger
 
 tqdm.pandas()
-
-logging.basicConfig(
-    format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
-)
-logger = logging.getLogger("__file__")
 
 
 class MTBPretrainDataLoader:
@@ -115,11 +109,8 @@ class MTBPretrainDataLoader:
 
         else:
             logger.info("Building pretraining dataset from corpus")
-            with open(data_path, "r", encoding="utf8") as f:
-                text = f.readlines()
-
             dataset, x_map_rev, e_map_rev = self.build_dataset(
-                text, preprocessed_file
+                data_path, preprocessed_file
             )
 
             valncreate_dir(os.path.join("data", self.experiment_name))
@@ -131,13 +122,13 @@ class MTBPretrainDataLoader:
             )
         return dataset
 
-    def build_dataset(self, text, save_path):
+    def build_dataset(self, data_path: str, save_path: str):
         """
-        Builds the Matching the Blanks pretraining dataset from the given
-        textcorpus.
+        Loads the Textcorpus from the given data path and builds the Matching
+        the Blanks pretraining dataset from it.
 
         Args:
-            text: List of text corpora
+            data_path: Filepath to the text corpus
             save_path: Where to save the file
         """
         save_dir = os.path.dirname(save_path)
@@ -159,6 +150,8 @@ class MTBPretrainDataLoader:
                 e_map_rev = {int(k): v for k, v in e_map_rev.items()}
             dataset = np.load(mapped_dataset_path)
         else:
+            with open(data_path, "r", encoding="utf8") as f:
+                text = f.readlines()
             dataset, x_map_rev, e_map_rev = self._build_mapped_dataset(
                 text, save_dir
             )
@@ -514,23 +507,23 @@ class MTBPretrainDataLoader:
 
         logger.info("Clean Entity Map")
         unique_entities = set(np.unique(data[:, [5, 6]].reshape(1, -1)[0]))
-        idx_to_pop = set()
+        e_keys_to_pop = set()
         for e_key in tqdm(e_map_rev.keys()):
             if e_key not in unique_entities:
-                idx_to_pop.add(e_key)
+                e_keys_to_pop.add(e_key)
 
-        for idx in idx_to_pop:
-            e_map_rev.pop(idx)
+        for e_k in e_keys_to_pop:
+            e_map_rev.pop(e_k)
 
         logger.info("Clean X Map")
         unique_x = set(np.unique(data[:, 0]))
-        idx_to_pop = set()
+        x_keys_to_pop = set()
         for x_key in tqdm(x_map_rev.keys()):
             if x_key not in unique_x:
-                idx_to_pop.add(x_key)
+                x_keys_to_pop.add(x_key)
 
-        for idx in idx_to_pop:
-            x_map_rev.pop(idx)
+        for x_k in x_keys_to_pop:
+            x_map_rev.pop(x_k)
 
         return data, x_map_rev, e_map_rev
 

@@ -28,15 +28,15 @@ class Two_Headed_Loss(nn.Module):
         super(Two_Headed_Loss, self).__init__()
         self.lm_ignore_idx = lm_ignore_idx
         self.LM_criterion = nn.CrossEntropyLoss(
-            ignore_index=self.lm_ignore_idx
+            ignore_index=self.lm_ignore_idx, reduction="sum"
         )
         self.use_logits = use_logits
         self.normalize = normalize
 
         if not self.use_logits:
-            self.BCE_criterion = nn.BCELoss(reduction="mean")
+            self.BCE_criterion = nn.BCELoss(reduction="sum")
         else:
-            self.BCE_criterion = nn.BCEWithLogitsLoss(reduction="mean")
+            self.BCE_criterion = nn.BCEWithLogitsLoss(reduction="sum")
 
     def p_(self, f1_vec, f2_vec):
         if self.normalize:

@@ -4,7 +4,7 @@ import time
 
 import torch
 
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from logger import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 
 logging.basicConfig(
     format=LOG_FORMAT,
@@ -35,7 +35,7 @@ class RelationExtractor:
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         return checkpoint
 
-    def _prepare_epoch(self, epoch):
+    def _train_epoch(self, epoch):
         logger.info("Starting epoch {0}".format(epoch + 1))
         self.model.train()
         return time.time()
