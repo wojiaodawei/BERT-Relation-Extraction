@@ -1,4 +1,3 @@
-import logging
 import os
 import time
 from itertools import combinations
@@ -13,18 +12,11 @@ from torch import nn, optim
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.mtb_data_loader import MTBPretrainDataLoader
+from logger import logger
 from model.bert import BertModel
 from model.relation_extractor import RelationExtractor
 from src.train_funcs import Two_Headed_Loss
-
-logging.basicConfig(
-    format=LOG_FORMAT,
-    datefmt=LOG_DATETIME_FORMAT,
-    level=LOG_LEVEL,
-)
-logger = logging.getLogger(__file__)
 
 sns.set(font_scale=2.2)
 
@@ -81,7 +73,7 @@ class MTBModel(RelationExtractor):
         )
 
         self._start_epoch = 0
-        self._best_mtb_bce = 1
+        self._best_mtb_bce = 50
         self._train_loss = []
         self._train_lm_acc = []
         self._lm_acc = []
@@ -113,6 +105,9 @@ class MTBModel(RelationExtractor):
     def train(self, **kwargs):
         """
         Runs the training.
+
+        Arg:
+            kwargs: Additional Keyworkd arguments
         """
         save_best_model_only = kwargs.get("save_best_model_only", False)
         results_path = os.path.join(
@@ -204,10 +199,9 @@ class MTBModel(RelationExtractor):
     def _train_epoch(
         self, epoch, update_size, save_best_model_only: bool = False
     ):
-        start_time = super()._prepare_epoch(epoch)
+        start_time = super()._train_epoch(epoch)
 
-        _train_acc, train_loss, train_mtb_bce = MTBModel._reset_train_metrics()
-        train_lm_acc, train_mtb_bce_batch = [], []
+        train_lm_acc, train_loss, train_mtb_bce = [], [], []
 
         for i, data in enumerate(tqdm(self.data_loader.train_generator)):
             sequence, masked_label, e1_e2_start, blank_labels = data
@@ -233,19 +227,14 @@ class MTBModel(RelationExtractor):
             epoch, self._mtb_bce, self._best_mtb_bce, save_best_model_only
         )
 
-        logger.info("Train Loss: {0}".format(self._train_loss[-1]))
-        logger.info("Train LM Accuracy: {0}".format(self._train_lm_acc[-1]))
-        logger.info("Validation LM Accuracy: {0}".format(self._lm_acc[-1]))
         logger.info(
-            "Validation MTB Binary Cross Entropy: {0}".format(
-                self._mtb_bce[-1]
-            )
+            f"Epoch finished, took {time.time() - start_time} seconds!"
         )
-
+        logger.info(f"Train Loss: {self._train_loss[-1]}!")
+        logger.info(f"Train LM Accuracy: {self._train_lm_acc[-1]}!")
+        logger.info(f"Validation LM Accuracy: {self._lm_acc[-1]}!")
         logger.info(
-            "Epoch finished, took {0} seconds.".format(
-                time.time() - start_time
-            )
+            f"Validation MTB Binary Cross Entropy: {self._mtb_bce[-1]}!"
         )
 
     def on_epoch_end(
@@ -260,6 +249,8 @@ class MTBModel(RelationExtractor):
             epoch: Current epoch
             benchmark: List of benchmark results
             baseline: Current baseline. Best model performance so far
+            save_best_model_only: Whether to only save the best model so far
+                or all of them
         """
         eval_result = super().on_epoch_end(epoch, benchmark, baseline)
         self._best_mtb_bce = (
@@ -272,12 +263,6 @@ class MTBModel(RelationExtractor):
         super().save_on_epoch_end(
             self._mtb_bce, self._best_mtb_bce, epoch, save_best_model_only
         )
-
-    @classmethod
-    def _reset_train_metrics(cls):
-        train_loss, train_acc = super()._reset_train_metrics()
-        train_mtb_bce = []
-        return train_acc, train_loss, train_mtb_bce
 
     def _train_on_batch(
         self,
@@ -298,6 +283,8 @@ class MTBModel(RelationExtractor):
             mskd_label,
             blank_labels,
         )
+        loss_p = loss.item()
+        loss = loss / self.config.get("batch_size")
         loss.backward()
         self._points_seen += len(sequence)
         clip_grad_norm_(self.model.parameters(), self.config.get("max_norm"))
@@ -311,7 +298,7 @@ class MTBModel(RelationExtractor):
             mskd_label,
             blank_labels,
         )
-        return loss.item(), train_metrics[0], train_metrics[1]
+        return loss_p / len(sequence), train_metrics[0], train_metrics[1]
 
     def _save_model(self, path, epoch, best_model: bool = False):
         if best_model:

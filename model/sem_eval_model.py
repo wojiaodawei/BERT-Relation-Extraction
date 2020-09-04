@@ -13,8 +13,8 @@ from torch.nn import CrossEntropyLoss
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
-from constants import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from dataloaders.semeval_dataloader import SemEvalDataloader
+from logger import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from model.bert import BertModel
 from model.relation_extractor import RelationExtractor
 from seqeval.metrics import f1_score, precision_score, recall_score
@@ -151,7 +151,7 @@ class SemEvalModel(RelationExtractor):
         return self.model
 
     def _train_epoch(self, epoch, pad_id, update_size):
-        start_time = super()._prepare_epoch(epoch)
+        start_time = super()._train_epoch(epoch)
 
         train_loss, train_acc = SemEvalModel._reset_train_metrics()
         train_loss_batch, train_acc_batch = [], []

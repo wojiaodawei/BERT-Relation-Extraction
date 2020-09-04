@@ -5,17 +5,15 @@ Created on Wed Dec 11 15:44:17 2019.
 
 @author: weetee
 """
-
 import logging
 import os
 import pickle
 import re
 from itertools import permutations
 
-from tqdm import tqdm
-
 import spacy
 import torch
+from tqdm import tqdm
 
 from ..misc import save_as_pickle
 from .preprocessing_funcs import load_dataloaders

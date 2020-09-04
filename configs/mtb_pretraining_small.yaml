@@ -1,5 +1,8 @@
+# AWS config:
+aws_train_instance_type: local #ml.g4dn.xlarge
+aws_data_input: s3://eb7-datascience/matching_the_blanks_data/
 # Experiment
-experiment_name: pretraining_small
+experiment_name: MTB-pretraining-small
 # Data
 data: data/cnn-small.txt #pre-training data.txt file path
 normalization:
@@ -8,11 +11,11 @@ normalization:
   - urls
 min_pool_size: 2
 # Model
-transformer: bert-base-uncased
+transformer: bert-large-uncased
 # Training
 batch_size: 2048 # Training batch size
 max_norm: 1.0 # Clipped gradient norm
-epochs: 320000 # Number of Epochs
+epochs: 2500 # Number of Epochs
 lr: 0.0003 # learning rate
 resume: False # Warm Start
-save_best_model_only: True
+save_best_model_only: True # Whether to only save the best model so far
