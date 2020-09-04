@@ -1,3 +1,6 @@
+# AWS config:
+aws_train_instance_type: local
+aws_data_input: s3://eb7-datascience/matching_the_blanks_data
 # Experiment
 experiment_name: pretraining_small
 # Data
@@ -12,6 +15,6 @@ transformer: bert-base-uncased
 # Training
 batch_size: 64 # Training batch size
 max_norm: 1.0 # Clipped gradient norm
-epochs: 100 # Number of Epochs
+epochs: 1 # Number of Epochs
 lr: 0.0003 # learning rate
 resume: False # Warm Start

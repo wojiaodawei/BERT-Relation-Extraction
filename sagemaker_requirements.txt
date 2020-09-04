@@ -3,8 +3,6 @@ python-benedict==0.18.0
 PyGithub==1.45
 pydot==1.4.1
 spacy==2.3.2
-boto3==1.14.11
 git+ssh://git@github.com/ebot7/ml_utils.git@v1.4.6#egg=ml_utils[normalizer]
 transformers==3.0.2
-torch==1.5.1
 matplotlib==3.3.0
