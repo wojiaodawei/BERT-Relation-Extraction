@@ -2,7 +2,7 @@
 aws_train_instance_type: ml.g4dn.2xlarge
 aws_data_input: s3://eb7-datascience/matching_the_blanks_data
 # Experiment
-experiment_name: MTB-pretraining
+experiment_name: MTB-MTB-pretraining
 # Data
 data: data/cnn.txt #pre-training data.txt file path
 normalization:

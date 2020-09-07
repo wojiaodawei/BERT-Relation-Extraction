@@ -108,7 +108,7 @@ class MTBPretrainDataLoader:
                 return joblib.load(pkl_file)
 
         else:
-            logger.info("Building pretraining dataset from corpus")
+            logger.info("Building MTB-pretraining dataset from corpus")
             dataset, x_map_rev, e_map_rev = self.build_dataset(
                 data_path, preprocessed_file
             )
@@ -125,7 +125,7 @@ class MTBPretrainDataLoader:
     def build_dataset(self, data_path: str, save_path: str):
         """
         Loads the Textcorpus from the given data path and builds the Matching
-        the Blanks pretraining dataset from it.
+        the Blanks MTB-pretraining dataset from it.
 
         Args:
             data_path: Filepath to the text corpus
@@ -208,19 +208,25 @@ class MTBPretrainDataLoader:
             )
         data = self.remap_content(data, e_map_rev, x_map_rev)
 
-        logger.info("Add special tokens to relations")
-        relations = []
+        logger.info("Add special tokens to relations and tokenize")
+        tokenized_relations = []
+        e_span1 = []
+        e_span2 = []
         for d in tqdm(data):
             relation = self._add_special_tokens(d)
-            relations.append(relation)
-
-        logger.info("Tokenizing relations")
-        tokenized_relations = []
-        for n in tqdm(relations):
+            relation = " ".join(relation)
+            relation = self.tokenizer.tokenize(relation)
+            e1_s = relation.index("[E1]")
+            e1_e = relation.index("[/E1]")
+            e2_s = relation.index("[E2]")
+            e2_e = relation.index("[/E2]")
+            e_span1.append((e1_s + 1, e1_e - 1))
+            e_span2.append((e2_s + 1, e2_e - 1))
             tokenized_relations.append(
-                torch.IntTensor(self.tokenizer.convert_tokens_to_ids(n))
+                torch.IntTensor(self.tokenizer.convert_tokens_to_ids(relation))
             )
 
+        logger.info("Pad tokenized sequences")
         tokenized_relations = pad_sequence(
             tokenized_relations,
             batch_first=True,
@@ -238,8 +244,6 @@ class MTBPretrainDataLoader:
 
         data["relation_id"] = np.arange(0, len(data))
 
-        e_span1 = [(r[1][0] + 2, r[1][1] + 2) for r in data["r"]]
-        e_span2 = [(r[2][0] + 4, r[2][1] + 4) for r in data["r"]]
         r = [
             (tr.numpy().tolist(), e1, e2)
             for tr, e1, e2 in zip(tokenized_relations, e_span1, e_span2)
