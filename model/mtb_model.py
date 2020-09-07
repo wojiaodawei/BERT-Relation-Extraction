@@ -51,7 +51,7 @@ class MTBModel(RelationExtractor):
             raise ValueError("e1_id == e2_id == 1")
 
         self.train_on_gpu = torch.cuda.is_available() and config.get(
-            "use_cuda", True
+            "use_gpu", True
         )
         if self.train_on_gpu:
             logger.info("Train on GPU")
@@ -79,7 +79,7 @@ class MTBModel(RelationExtractor):
         self._lm_acc = []
         self._mtb_bce = []
         self.checkpoint_dir = os.path.join(
-            "models", "pretraining", self.experiment_name, self.transformer
+            "models", "MTB-pretraining", self.experiment_name, self.transformer
         )
         valncreate_dir(self.checkpoint_dir)
 
@@ -111,7 +111,7 @@ class MTBModel(RelationExtractor):
         """
         save_best_model_only = kwargs.get("save_best_model_only", False)
         results_path = os.path.join(
-            "results", "pretraining", self.experiment_name, self.transformer
+            "results", "MTB-pretraining", self.experiment_name, self.transformer
         )
         best_model_path = os.path.join(
             self.checkpoint_dir, "best_model.pth.tar"

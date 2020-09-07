@@ -11,7 +11,7 @@ Run `pretraining.py` with a YAML `--conf_file` containing the following argument
 ```yaml
 # Data
 data: data/cnn.txt # pre-training data.txt file path
-normalization: # How to normalize the pretraining corpus
+normalization: # How to normalize the MTB-pretraining corpus
   - lowercase # Apply lowercase
   - html # Strip HTML tags
   - urls # Remove URLs
@@ -36,7 +36,7 @@ Run `main_task.py` with a YAML `--conf_file` containing the arguments below. Req
 train_file: data/sem_eval/SemEval2010_task8_training/TRAIN_FILE.TXT
 test_file: data/sem_eval/SemEval2010_task8_testing_keys/TEST_FILE_FULL.TXT
 # Model
-pretrained_mtb_model: models/pretraining/pretraining-small/bert-base-uncased/best_model.pth.tar
+pretrained_mtb_model: models/MTB-pretraining/MTB-pretraining-small/bert-base-uncased/best_model.pth.tar
 transformer: bert-base-uncased
 # Training
 batch_size: 64

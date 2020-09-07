@@ -2,7 +2,7 @@
 train_file: data/sem_eval/SemEval2010_task8_training/TRAIN_FILE.TXT
 test_file: data/sem_eval/SemEval2010_task8_testing_keys/TEST_FILE_FULL.TXT
 # Model
-pretrained_mtb_model: models/pretraining/pretraining_small/bert-base-uncased/best_model.pth.tar
+pretrained_mtb_model: models/MTB-pretraining/MTB-pretraining-small/bert-base-uncased/best_model.pth.tar
 transformer: bert-base-uncased
 # Training
 batch_size: 64
