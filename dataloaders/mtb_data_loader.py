@@ -212,19 +212,27 @@ class MTBPretrainDataLoader:
         tokenized_relations = []
         e_span1 = []
         e_span2 = []
-        for d in tqdm(data):
-            relation = self._add_special_tokens(d)
-            relation = " ".join(relation)
-            relation = self.tokenizer.tokenize(relation)
-            e1_s = relation.index("[E1]")
-            e1_e = relation.index("[/E1]")
-            e2_s = relation.index("[E2]")
-            e2_e = relation.index("[/E2]")
-            e_span1.append((e1_s + 1, e1_e - 1))
-            e_span2.append((e2_s + 1, e2_e - 1))
-            tokenized_relations.append(
-                torch.IntTensor(self.tokenizer.convert_tokens_to_ids(relation))
-            )
+        idx_to_drop = set()
+
+        for idx, d in tqdm(enumerate(data)):
+            try:
+                relation = self._add_special_tokens(d)
+                relation = " ".join(relation)
+                relation = self.tokenizer.tokenize(relation)
+                e1_s = relation.index("[E1]")
+                e1_e = relation.index("[/E1]")
+                e2_s = relation.index("[E2]")
+                e2_e = relation.index("[/E2]")
+                e_span1.append((e1_s + 1, e1_e - 1))
+                e_span2.append((e2_s + 1, e2_e - 1))
+                tokenized_relations.append(
+                    torch.IntTensor(self.tokenizer.convert_tokens_to_ids(relation))
+                )
+            except ValueError:
+                idx_to_drop.add(idx)
+
+        logger.info(f"Droping {len(idx)} samples")
+        data = [d for idx, d in enumerate(data) if idx not in idx_to_drop]
 
         logger.info("Pad tokenized sequences")
         tokenized_relations = pad_sequence(
