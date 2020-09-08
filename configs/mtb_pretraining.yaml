@@ -2,7 +2,7 @@
 aws_train_instance_type: ml.g4dn.2xlarge
 aws_data_input: s3://eb7-datascience/matching_the_blanks_data
 # Experiment
-experiment_name: MTB-MTB-pretraining
+experiment_name: MTB-pretraining
 # Data
 data: data/cnn.txt #pre-training data.txt file path
 normalization:
@@ -15,7 +15,7 @@ transformer: bert-large-uncased
 # Training
 batch_size: 2048 # Training batch size
 max_norm: 1.0 # Clipped gradient norm
-epochs: 25 # Number of Epochs
+epochs: 3 # Number of Epochs
 lr: 0.0003 # learning rate
 resume: False # Warm Start
 save_best_model_only: True # Whether to only save the best model so far
