@@ -212,9 +212,8 @@ class MTBPretrainDataLoader:
         tokenized_relations = []
         e_span1 = []
         e_span2 = []
-        idx_to_drop = set()
-
-        for idx, d in tqdm(enumerate(data)):
+        to_idx = 0
+        for idx, d in enumerate(tqdm(data)):
             try:
                 relation = self._add_special_tokens(d)
                 relation = " ".join(relation)
@@ -228,11 +227,11 @@ class MTBPretrainDataLoader:
                 tokenized_relations.append(
                     torch.IntTensor(self.tokenizer.convert_tokens_to_ids(relation))
                 )
+                data[to_idx] = d
+                to_idx += 1
             except ValueError:
-                idx_to_drop.add(idx)
-
-        logger.info(f"Droping {len(idx)} samples")
-        data = [d for idx, d in enumerate(data) if idx not in idx_to_drop]
+                continue
+        del data[to_idx:]  # noqa: WPS420
 
         logger.info("Pad tokenized sequences")
         tokenized_relations = pad_sequence(
