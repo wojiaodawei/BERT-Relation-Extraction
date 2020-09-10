@@ -208,11 +208,12 @@ class MTBPretrainDataLoader:
             )
         data = self.remap_content(data, e_map_rev, x_map_rev)
 
-        logger.info("Add special tokens to relations and tokenize")
+        logger.info("Add special tokens to relations, tokenize and pad")
         tokenized_relations = []
         e_span1 = []
         e_span2 = []
         to_idx = 0
+        ld = len(data)
         for idx, d in enumerate(tqdm(data)):
             try:
                 relation = self._add_special_tokens(d)
@@ -224,30 +225,23 @@ class MTBPretrainDataLoader:
                 e2_e = relation.index("[/E2]")
                 e_span1.append((e1_s + 1, e1_e - 1))
                 e_span2.append((e2_s + 1, e2_e - 1))
-                tokenized_relations.append(
-                    torch.IntTensor(self.tokenizer.convert_tokens_to_ids(relation))
+                tokenized_relation = self.tokenizer.convert_tokens_to_ids(
+                    relation
                 )
+                padded_tokenized_relation = pad_sequence(
+                    [torch.IntTensor(tokenized_relation)],
+                    batch_first=True,
+                    padding_value=self.pad_token_id,
+                )
+                tokenized_relations.append(padded_tokenized_relation)
                 data[to_idx] = d
                 to_idx += 1
             except ValueError:
                 continue
         del data[to_idx:]  # noqa: WPS420
+        logger.info(f"Deleted {ld-to_idx} Datapoints")
 
-        logger.info("Pad tokenized sequences")
-        tokenized_relations = pad_sequence(
-            tokenized_relations,
-            batch_first=True,
-            padding_value=self.pad_token_id,
-        )
-
-        data = pd.DataFrame(
-            data,
-            columns=[
-                "r",
-                "e1",
-                "e2",
-            ],
-        )
+        data = pd.DataFrame(data, columns=["r", "e1", "e2"],)
 
         data["relation_id"] = np.arange(0, len(data))
 
