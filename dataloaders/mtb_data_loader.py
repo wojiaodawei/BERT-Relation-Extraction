@@ -228,12 +228,7 @@ class MTBPretrainDataLoader:
                 tokenized_relation = self.tokenizer.convert_tokens_to_ids(
                     relation
                 )
-                padded_tokenized_relation = pad_sequence(
-                    [torch.IntTensor(tokenized_relation)],
-                    batch_first=True,
-                    padding_value=self.pad_token_id,
-                )
-                tokenized_relations.append(padded_tokenized_relation)
+                tokenized_relations.append(tokenized_relation)
                 data[to_idx] = d
                 to_idx += 1
             except ValueError:
@@ -241,12 +236,15 @@ class MTBPretrainDataLoader:
         del data[to_idx:]  # noqa: WPS420
         logger.info(f"Deleted {ld-to_idx} Datapoints")
 
-        data = pd.DataFrame(data, columns=["r", "e1", "e2"],)
+        data = pd.DataFrame(
+            data,
+            columns=["r", "e1", "e2"],
+        )
 
         data["relation_id"] = np.arange(0, len(data))
 
         r = [
-            (tr.numpy().tolist(), e1, e2)
+            (tr, e1, e2)
             for tr, e1, e2 in zip(tokenized_relations, e_span1, e_span2)
         ]
         data["r"] = r
