@@ -2,22 +2,22 @@ import logging
 import os
 import time
 
+from tqdm import tqdm
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from matplotlib import pyplot as plt
-from ml_utils.common import valncreate_dir
-from torch import optim
-from torch.nn import CrossEntropyLoss
-from torch.nn.utils import clip_grad_norm_
-from tqdm import tqdm
-
 from dataloaders.semeval_dataloader import SemEvalDataloader
 from logger import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
+from matplotlib import pyplot as plt
+from ml_utils.path_operations import valncreate_dir
 from model.bert import BertModel
 from model.relation_extractor import RelationExtractor
 from seqeval.metrics import f1_score, precision_score, recall_score
+from torch import optim
+from torch.nn import CrossEntropyLoss
+from torch.nn.utils import clip_grad_norm_
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -153,8 +153,7 @@ class SemEvalModel(RelationExtractor):
     def _train_epoch(self, epoch, pad_id, update_size):
         start_time = super()._train_epoch(epoch)
 
-        train_loss, train_acc = SemEvalModel._reset_train_metrics()
-        train_loss_batch, train_acc_batch = [], []
+        train_loss, train_acc = [], []
 
         for i, data in enumerate(self.data_loader.train_loader):
             x, e1_e2_start, labels, _, _, _ = data
@@ -162,27 +161,23 @@ class SemEvalModel(RelationExtractor):
                 e1_e2_start, labels, pad_id, x
             )
 
-            train_loss += loss.item()
-            train_acc += SemEvalModel.evaluate_inner(
-                classification_logits, labels, ignore_idx=-1
-            )[0]
+            train_loss.append(loss.item())
+            train_acc.append(
+                SemEvalModel.evaluate_inner(
+                    classification_logits, labels, ignore_idx=-1
+                )[0]
+            )
 
             if (i % update_size) == (update_size - 1):
-                train_loss_batch.append(train_loss / update_size)
-                train_acc_batch.append(train_acc / update_size)
                 logger.info(
-                    "{0}/{1}: - ".format(
-                        (i + 1) * self.config.get("batch_size"),
-                        self.data_loader.train_len,
-                    )
-                    + "Train Loss: {0}, Train Accuracy: {1}".format(
-                        train_loss_batch[-1], train_acc_batch[-1]
-                    )
+                    f"{(i + 1) * self.config.get('batch_size')}/"
+                    + f"{self.data_loader.train_len}: - "
+                    + f"Train Loss: {np.mean(train_loss)}, "
+                    + f"Train Accuracy: {np.mean(train_acc)}"
                 )
-                train_loss, train_acc = SemEvalModel._reset_train_metrics()
 
-        self._train_loss.append(np.mean(train_loss_batch))
-        self._train_acc.append(np.mean(train_acc_batch))
+        self._train_loss.append(np.mean(np.mean(train_loss)))
+        self._train_acc.append(np.mean(np.mean(train_acc)))
 
         self.on_epoch_end(epoch, self._test_f1, self._best_test_f1)
 

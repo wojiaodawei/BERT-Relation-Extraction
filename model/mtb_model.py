@@ -2,21 +2,21 @@ import os
 import time
 from itertools import combinations
 
+from tqdm import tqdm
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from matplotlib import pyplot as plt
-from ml_utils.path_operations import valncreate_dir
-from torch import nn, optim
-from torch.nn.utils import clip_grad_norm_
-from tqdm import tqdm
-
 from dataloaders.mtb_data_loader import MTBPretrainDataLoader
 from logger import logger
+from matplotlib import pyplot as plt
+from ml_utils.path_operations import valncreate_dir
 from model.bert import BertModel
 from model.relation_extractor import RelationExtractor
 from src.train_funcs import Two_Headed_Loss
+from torch import nn, optim
+from torch.nn.utils import clip_grad_norm_
 
 sns.set(font_scale=2.2)
 
@@ -111,7 +111,10 @@ class MTBModel(RelationExtractor):
         """
         save_best_model_only = kwargs.get("save_best_model_only", False)
         results_path = os.path.join(
-            "results", "MTB-pretraining", self.experiment_name, self.transformer
+            "results",
+            "MTB-pretraining",
+            self.experiment_name,
+            self.transformer,
         )
         best_model_path = os.path.join(
             self.checkpoint_dir, "best_model.pth.tar"
