@@ -1,10 +1,10 @@
-import sagemaker
 from ml_utils.config_parser import ConfigParser
 from ml_utils.console_args import args
 from ml_utils.path_operations import strip_to_tmp
-from sagemaker.pytorch import PyTorch
 
+import sagemaker
 from logger import logger
+from sagemaker.pytorch import PyTorch
 
 sagemaker_session = sagemaker.Session()
 
@@ -12,7 +12,7 @@ config = ConfigParser(
     args.config_file, console_args=dict(args._get_kwargs())
 ).parse()
 
-MAX_TRAIN_TIME = 5*24*3600
+MAX_TRAIN_TIME = 5 * 24 * 3600
 
 
 if __name__ == "__main__":
@@ -60,11 +60,11 @@ if __name__ == "__main__":
         base_job_name=config.get("experiment_name", None),
         metric_definitions=metric_definitions,
         enable_sagemaker_metrics=True,
-        max_run=MAX_TRAIN_TIME
+        max_run=MAX_TRAIN_TIME,
     )
 
     if config.get("aws_train_instance_type", "local") == "local":
-        inputs = {"training": f"file://data/pretraining_small"}
+        inputs = {"training": "file://data"}
     else:
         inputs = {"training": config.get("aws_data_input")}
 

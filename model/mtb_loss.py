@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Nov 28 09:37:26 2019.
-
-@author: weetee
-"""
 import logging
 from itertools import combinations
 
@@ -19,36 +12,19 @@ logging.basicConfig(
 logger = logging.getLogger(__file__)
 
 
-class Two_Headed_Loss(nn.Module):
+class MTBLoss(nn.Module):
     """
     Implements LM Loss and matching-the-blanks loss concurrently.
     """
 
-    def __init__(self, lm_ignore_idx, use_logits=False, normalize=False):
-        super(Two_Headed_Loss, self).__init__()
+    def __init__(self, lm_ignore_idx):
+        super(MTBLoss, self).__init__()
         self.lm_ignore_idx = lm_ignore_idx
         self.LM_criterion = nn.CrossEntropyLoss(
             ignore_index=self.lm_ignore_idx, reduction="sum"
         )
-        self.use_logits = use_logits
-        self.normalize = normalize
 
-        if not self.use_logits:
-            self.BCE_criterion = nn.BCELoss(reduction="sum")
-        else:
-            self.BCE_criterion = nn.BCEWithLogitsLoss(reduction="sum")
-
-    def p_(self, f1_vec, f2_vec):
-        if self.normalize:
-            factor = 1 / (torch.norm(f1_vec) * torch.norm(f2_vec))
-        else:
-            factor = 1.0
-
-        if not self.use_logits:
-            p = 1 / (1 + torch.exp(-factor * torch.dot(f1_vec, f2_vec)))
-        else:
-            p = factor * torch.dot(f1_vec, f2_vec)
-        return p
+        self.BCE_criterion = nn.BCELoss(reduction="sum")
 
     def forward(self, lm_logits, blank_logits, lm_labels, blank_labels):
         """
@@ -69,7 +45,7 @@ class Two_Headed_Loss(nn.Module):
             pos_logits = []
             for pos1, pos2 in combinations(pos_idxs, 2):
                 pos_logits.append(
-                    self.p_(blank_logits[pos1, :], blank_logits[pos2, :])
+                    torch.dot(blank_logits[pos1, :], blank_logits[pos2, :])
                 )
             pos_logits = torch.stack(pos_logits, dim=0)
             pos_labels = [1.0 for _ in range(pos_logits.shape[0])]
@@ -83,7 +59,9 @@ class Two_Headed_Loss(nn.Module):
         for pos_idx in pos_idxs:
             for neg_idx in neg_idxs:
                 neg_logits.append(
-                    self.p_(blank_logits[pos_idx, :], blank_logits[neg_idx, :])
+                    torch.dot(
+                        blank_logits[pos_idx, :], blank_logits[neg_idx, :]
+                    )
                 )
         neg_logits = torch.stack(neg_logits, dim=0)
         neg_labels = [0.0 for _ in range(neg_logits.shape[0])]

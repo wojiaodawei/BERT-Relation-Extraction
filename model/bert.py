@@ -47,7 +47,7 @@ class BertModel(BertPreTrainedModel):
             n_classes: Number of classes
 
         References:
-            Attention is all you need - https://arxiv.org/abs/1706.03762
+            Attention is all you need (https://arxiv.org/abs/1706.03762)
         """
         super(BertModel, self).__init__(config)
         self.config = config
@@ -62,9 +62,6 @@ class BertModel(BertPreTrainedModel):
 
         logger.info("Model config: ", self.config)
         if self.task is None:
-            # blanks head
-            self.activation = nn.Tanh()
-            # LM head
             self.lm_head = BertOnlyMLMHead(config)
         elif self.task == "classification":
             self.n_classes = n_classes
@@ -96,7 +93,7 @@ class BertModel(BertPreTrainedModel):
         self,
         input_ids: torch.LongTensor = None,
         attention_mask: torch.FloatTensor = None,
-        token_type_ids=None,
+        token_type_ids: torch.LongTensor = None,
         position_ids=None,
         head_mask=None,
         inputs_embeds=None,
@@ -112,14 +109,13 @@ class BertModel(BertPreTrainedModel):
         Args:
             input_ids: Indices of input sequence tokens in the vocabulary.
                 Indices can be obtained using transformers.BertTokenizer.
-                See transformers.PreTrainedTokenizer.encode and transformers.PreTrainedTokenizer for details.
-            attention_mask: Mask to avoid performing attention on padding token indices.
-                 Mask values selected in [0, 1]: 1 for tokens that are NOT MASKED, 0 for MASKED tokens.
-            token_type_ids (:obj:`torch.LongTensor` of shape :obj:`{0}`, `optional`, defaults to :obj:`None`):
-                Segment token indices to indicate first and second portions of the inputs.
-                Indices are selected in ``[0, 1]``: ``0`` corresponds to a `sentence A` token, ``1``
-                corresponds to a `sentence B` token
-                `What are token type IDs? <../glossary.html#token-type-ids>`_
+            attention_mask: Mask to avoid performing attention on padding token
+                indices. Mask values selected in [0, 1]: 1 for tokens that are
+                NOT MASKED, 0 for MASKED tokens.
+            token_type_ids: Segment token indices to indicate first and second
+                portions of the inputs. Indices are selected in [0, 1]: 0
+                corresponds to a `sentence A` token, 1 corresponds to a
+                `sentence B` token.
             position_ids (:obj:`torch.LongTensor` of shape :obj:`{0}`, `optional`, defaults to :obj:`None`):
                 Indices of positions of each input sequence tokens in the position embeddings.
                 Selected in the range ``[0, config.max_position_embeddings - 1]``.
@@ -142,6 +138,7 @@ class BertModel(BertPreTrainedModel):
                 If set to ``True``, the attentions tensors of all attention layers are returned. See ``attentions`` under returned tensors for more detail.
             output_hidden_states: Output_hidden state
             e1_e2_start: Start of entity1 and entity2 markers.
+
         Returns:
             :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.BertConfig`) and inputs:
             last_hidden_state (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`):
@@ -150,15 +147,12 @@ class BertModel(BertPreTrainedModel):
                 Last layer hidden-state of the first token of the sequence (classification token)
                 further processed by a Linear layer and a Tanh activation function. The Linear
                 layer weights are trained from the next sentence prediction (classification)
-                objective during pre-training.
-
-                This output is usually *not* a good summary
+                objective during pre-training. This output is usually *not* a good summary
                 of the semantic content of the input, you're often better with averaging or pooling
                 the sequence of hidden-states for the whole input sequence.
             hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
                 Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
                 of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
                 Hidden-states of the model at the output of each layer plus the initial embedding outputs.
             attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
                 Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
@@ -259,21 +253,24 @@ class BertModel(BertPreTrainedModel):
         sequence_output = encoder_outputs[0]
         self.pooler(sequence_output)
 
-        ### two heads: LM and blanks
-        blankv1v2 = sequence_output[:, e1_e2_start, :]
+        blanks_entity_start_hidden = sequence_output[:, e1_e2_start, :]
         buffer = []
-        for i in range(blankv1v2.shape[0]):  # iterate batch & collect
-            v1v2 = blankv1v2[i, i, :, :]
-            v1v2 = torch.cat((v1v2[0], v1v2[1]))
-            buffer.append(v1v2)
-        v1v2 = torch.stack([a for a in buffer], dim=0)
+        for i in range(blanks_entity_start_hidden.shape[0]):
+            e1e2_merged = blanks_entity_start_hidden[i, i, :, :]
+            e1e2_merged = torch.cat((e1e2_merged[0], e1e2_merged[1]))
+            buffer.append(e1e2_merged)
+        e1e2_merged = torch.stack(list(buffer), dim=0)
 
         if self.task is None:
-            blanks_logits = self.activation(v1v2)
+            blanks_logits = e1e2_merged
             lm_logits = self.lm_head(sequence_output)
             return blanks_logits, lm_logits
         elif self.task == "classification":
-            classification_logits = self.classification_layer(v1v2)
-            return classification_logits
+            size = 1536 if self.model_size == "bert-base-uncased" else 2048
+            normalized_v1v2 = torch.nn.LayerNorm(
+                size, elementwise_affine=False
+            )(e1e2_merged)
+            classification_logits = self.classification_layer(normalized_v1v2)
+            return torch.nn.Softmax(1)(classification_logits)
         elif self.task == "fewrel":
-            return v1v2
+            return e1e2_merged
