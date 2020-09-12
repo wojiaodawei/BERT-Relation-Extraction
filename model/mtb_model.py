@@ -2,21 +2,21 @@ import os
 import time
 from itertools import combinations
 
-from tqdm import tqdm
-
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from dataloaders.mtb_data_loader import MTBPretrainDataLoader
-from logger import logger
 from matplotlib import pyplot as plt
 from ml_utils.path_operations import valncreate_dir
-from model.bert import BertModel
-from model.relation_extractor import RelationExtractor
-from src.train_funcs import Two_Headed_Loss
 from torch import nn, optim
 from torch.nn.utils import clip_grad_norm_
+from tqdm import tqdm
+
+from dataloaders.mtb_data_loader import MTBPretrainDataLoader
+from logger import logger
+from model.bert import BertModel
+from model.relation_extractor import RelationExtractor
+from model.mtb_loss import MTBLoss
 
 sns.set(font_scale=2.2)
 
@@ -57,10 +57,8 @@ class MTBModel(RelationExtractor):
             logger.info("Train on GPU")
             self.model.cuda()
 
-        self.criterion = Two_Headed_Loss(
+        self.criterion = MTBLoss(
             lm_ignore_idx=self.tokenizer.pad_token_id,
-            use_logits=True,
-            normalize=True,
         )
         self.optimizer = optim.Adam(
             [{"params": self.model.parameters(), "lr": self.config.get("lr")}]
