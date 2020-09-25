@@ -58,6 +58,8 @@ class BertModel(BertPreTrainedModel):
         self.encoder = BertEncoder(config)
         self.pooler = BertPooler(config)
 
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+
         self.init_weights()
 
         logger.info("Model config: ", self.config)
@@ -250,27 +252,29 @@ class BertModel(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
         )
-        sequence_output = encoder_outputs[0]
-        self.pooler(sequence_output)
+        sequence_output = encoder_outputs[-1]
 
-        blanks_entity_start_hidden = sequence_output[:, e1_e2_start, :]
-        buffer = []
-        for i in range(blanks_entity_start_hidden.shape[0]):
-            e1e2_merged = blanks_entity_start_hidden[i, i, :, :]
-            e1e2_merged = torch.cat((e1e2_merged[0], e1e2_merged[1]))
-            buffer.append(e1e2_merged)
-        e1e2_merged = torch.stack(list(buffer), dim=0)
+        e1_hidden = []
+        e2_hidden = []
+        for idx, e1e2_idx in enumerate(e1_e2_start):
+            e1_s = e1e2_idx[0]
+            e2_s = e1e2_idx[1]
+            e1_hidden.append(sequence_output[idx, e1_s, :])
+            e2_hidden.append(sequence_output[idx, e2_s, :])
+        e1_hidden = torch.stack(e1_hidden, dim=0)
+        e2_hidden = torch.stack(e2_hidden, dim=0)
+        e1e2_concat = torch.cat([e1_hidden, e2_hidden], dim=1)
 
         if self.task is None:
-            blanks_logits = e1e2_merged
+            blanks_logits = e1e2_concat
             lm_logits = self.lm_head(sequence_output)
             return blanks_logits, lm_logits
         elif self.task == "classification":
-            size = 1536 if self.model_size == "bert-base-uncased" else 2048
-            normalized_v1v2 = torch.nn.LayerNorm(
-                size, elementwise_affine=False
-            )(e1e2_merged)
-            classification_logits = self.classification_layer(normalized_v1v2)
-            return torch.nn.Softmax(1)(classification_logits)
+            e1e2_concat = torch.nn.LayerNorm(
+                e1e2_concat.size()[1:], elementwise_affine=False
+            )(e1e2_concat)
+            e1e2_concat = self.dropout(e1e2_concat)
+            classification_logits = self.classification_layer(e1e2_concat)
+            return classification_logits
         elif self.task == "fewrel":
-            return e1e2_merged
+            return e1e2_concat

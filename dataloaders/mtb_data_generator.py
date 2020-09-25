@@ -73,11 +73,25 @@ class MTBGenerator(Dataset):
         r0, r1, r2 = r
         r0 = np.array(r0)
         if blank_e1 < alpha:
-            r0[r1[0] : (r1[1] + 1)] = self.blank_idx
+            if r1[1] > r1[0]:
+                r0 = np.append(
+                    np.append(r0[: r1[0]], self.blank_idx), r0[r1[1] + 1 :]
+                )
+                diff = r1[1] - r1[0]
+                r2 = (r2[0] - diff, r2[1] - diff)
+                r1 = (r1[0], r1[0])
+            else:
+                r0[r1[0] : (r1[1] + 1)] = self.blank_idx
             e1 = "[BLANK]"
 
         if blank_e2 < alpha:
-            r0[r2[0] : (r2[1] + 1)] = self.blank_idx
+            if r2[1] > r2[0]:
+                r0 = np.append(
+                    np.append(r0[: r2[0]], self.blank_idx), r0[r2[1] + 1 :]
+                )
+                r2 = (r2[0], r2[0])
+            else:
+                r0[r2[0] : (r2[1] + 1)] = self.blank_idx
             e2 = "[BLANK]"
         r = (r0, r1, r2)
         return (r, e1, e2)
@@ -145,7 +159,7 @@ class MTBGenerator(Dataset):
             neg_idxs = random.sample(negatives, n_negatives)
 
         if not neg_idxs:
-            n_negatives = min(8, self.len_data)
+            n_negatives = min(self.max_size, self.len_data)
             neg_idx = [
                 int(self.len_data * random.random())
                 for _ in range(n_negatives)
