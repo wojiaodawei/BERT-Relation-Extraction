@@ -10,5 +10,5 @@ transformer: bert-large-uncased
 # Training
 mini_batch_size: 4
 batch_size: 64
-lr: 0.000003
+lr: 0.00003
 resume: False
