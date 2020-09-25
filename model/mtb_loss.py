@@ -24,7 +24,7 @@ class MTBLoss(nn.Module):
             ignore_index=self.lm_ignore_idx, reduction="sum"
         )
 
-        self.BCE_criterion = nn.BCELoss(reduction="sum")
+        self.BCE_criterion = nn.BCEWithLogitsLoss(reduction="sum")
 
     def forward(self, lm_logits, blank_logits, lm_labels, blank_labels):
         """

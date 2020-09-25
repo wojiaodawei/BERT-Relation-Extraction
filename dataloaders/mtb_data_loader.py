@@ -41,7 +41,7 @@ class MTBPretrainDataLoader:
             data=self.data.copy(),
             tokenizer=self.tokenizer,
             dataset="train",
-            max_size=8,
+            max_size=self.config.get("max_size"),
         )
         self.validation_generator = MTBGenerator(
             data=self.data.copy(),
@@ -230,7 +230,7 @@ class MTBPretrainDataLoader:
                 data[to_idx] = d
                 to_idx += 1
             except ValueError:
-                continue
+                logger.info(f"Value error for relation {d[0][0]}")
         del data[to_idx:]  # noqa: WPS420
         logger.info(f"Deleted {ld-to_idx} Datapoints")
 

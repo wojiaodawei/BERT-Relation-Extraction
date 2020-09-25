@@ -32,7 +32,16 @@ class RelationExtractor:
         checkpoint = torch.load(best_model_path)
         self.model.load_state_dict(checkpoint["state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler"])
-        self.optimizer.load_state_dict(checkpoint["optimizer"])
+        optimizer_state_dict = checkpoint["optimizer"]
+        optimizer_state_dict["state"] = optimizer_state_dict["state"][
+            max(optimizer_state_dict["state"].keys())
+        ]
+        self.optimizer.load_state_dict(optimizer_state_dict)
+        for k, v in self.optimizer.state.items():
+            if isinstance(v, torch.Tensor):
+                self.optimizer.state[k] = v.cuda()
+        if "tokenizer" in checkpoint:
+            self.tokenizer = checkpoint["tokenizer"]
         return checkpoint
 
     def _train_epoch(self, epoch):

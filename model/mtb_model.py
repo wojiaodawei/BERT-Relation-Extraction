@@ -8,15 +8,15 @@ import seaborn as sns
 import torch
 from matplotlib import pyplot as plt
 from ml_utils.path_operations import valncreate_dir
-from torch import nn, optim
-from torch.nn.utils import clip_grad_norm_
+from torch import nn
 from tqdm import tqdm
+from transformers.optimization import AdamW, get_linear_schedule_with_warmup
 
 from dataloaders.mtb_data_loader import MTBPretrainDataLoader
 from logger import logger
 from model.bert import BertModel
-from model.relation_extractor import RelationExtractor
 from model.mtb_loss import MTBLoss
+from model.relation_extractor import RelationExtractor
 
 sns.set(font_scale=2.2)
 
@@ -60,14 +60,37 @@ class MTBModel(RelationExtractor):
         self.criterion = MTBLoss(
             lm_ignore_idx=self.tokenizer.pad_token_id,
         )
-        self.optimizer = optim.Adam(
-            [{"params": self.model.parameters(), "lr": self.config.get("lr")}]
+        no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p
+                    for n, p in self.model.named_parameters()
+                    if not any(nd in n for nd in no_decay)
+                ],
+                "weight_decay": 0.01,
+            },
+            {
+                "params": [
+                    p
+                    for n, p in self.model.named_parameters()
+                    if any(nd in n for nd in no_decay)
+                ],
+                "weight_decay": 0.0,
+            },
+        ]
+        self.optimizer = AdamW(
+            optimizer_grouped_parameters, lr=self.config.get("lr")
         )
-
-        self.scheduler = optim.lr_scheduler.MultiStepLR(
-            self.optimizer,
-            milestones=[2, 4, 6, 8, 12, 15, 18, 20, 22, 24, 26, 30],
-            gamma=0.8,
+        ovr_steps = (
+            self.config.get("epochs")
+            * len(self.data_loader.train_generator)
+            * self.config.get("max_size")
+            * 2
+            / self.config.get("batch_size")
+        )
+        self.scheduler = get_linear_schedule_with_warmup(
+            self.optimizer, ovr_steps // 10, ovr_steps
         )
 
         self._start_epoch = 0
@@ -81,6 +104,7 @@ class MTBModel(RelationExtractor):
         )
         valncreate_dir(self.checkpoint_dir)
 
+        self._batch_points_seen = 0
         self._points_seen = 0
 
     def load_best_model(self, checkpoint_dir: str):
@@ -105,7 +129,7 @@ class MTBModel(RelationExtractor):
         Runs the training.
 
         Arg:
-            kwargs: Additional Keyworkd arguments
+            kwargs: Additional Keyword arguments
         """
         save_best_model_only = kwargs.get("save_best_model_only", False)
         results_path = os.path.join(
@@ -129,7 +153,7 @@ class MTBModel(RelationExtractor):
             ) = self.load_best_model(self.checkpoint_dir)
 
         logger.info("Starting training process")
-        update_size = len(self.data_loader.train_generator) // 10
+        update_size = len(self.data_loader.train_generator) // 100
         for epoch in range(self._start_epoch, self.config.get("epochs")):
             self._train_epoch(epoch, update_size, save_best_model_only)
             data = self._write_kpis(results_path)
@@ -206,6 +230,8 @@ class MTBModel(RelationExtractor):
 
         for i, data in enumerate(tqdm(self.data_loader.train_generator)):
             sequence, masked_label, e1_e2_start, blank_labels = data
+            if sequence.shape[1] > 70:
+                continue
             res = self._train_on_batch(
                 sequence, masked_label, e1_e2_start, blank_labels
             )
@@ -287,12 +313,13 @@ class MTBModel(RelationExtractor):
         loss_p = loss.item()
         loss = loss / self.config.get("batch_size")
         loss.backward()
+        self._batch_points_seen += len(sequence)
         self._points_seen += len(sequence)
-        clip_grad_norm_(self.model.parameters(), self.config.get("max_norm"))
-        if self._points_seen > self.config.get("batch_size"):
+        if self._batch_points_seen > self.config.get("batch_size"):
             self.optimizer.step()
             self.optimizer.zero_grad()
-            self._points_seen = 0
+            self.scheduler.step()
+            self._batch_points_seen = 0
         train_metrics = self.calculate_metrics(
             lm_logits,
             blanks_logits,
@@ -312,6 +339,7 @@ class MTBModel(RelationExtractor):
             {
                 "epoch": epoch + 1,
                 "state_dict": self.model.state_dict(),
+                "tokenizer": self.tokenizer,
                 "best_mtb_bce": self._best_mtb_bce,
                 "optimizer": self.optimizer.state_dict(),
                 "scheduler": self.scheduler.state_dict(),

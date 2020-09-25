@@ -2,22 +2,21 @@ import logging
 import os
 import time
 
-from tqdm import tqdm
-
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-from dataloaders.semeval_dataloader import SemEvalDataloader
-from logger import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from matplotlib import pyplot as plt
 from ml_utils.path_operations import valncreate_dir
+from sklearn.metrics import f1_score, precision_score, recall_score
+from torch.nn import CrossEntropyLoss
+from tqdm import tqdm
+from transformers.optimization import AdamW, get_linear_schedule_with_warmup
+
+from dataloaders.semeval_dataloader import SemEvalDataloader
+from logger import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 from model.bert import BertModel
 from model.relation_extractor import RelationExtractor
-from seqeval.metrics import f1_score, precision_score, recall_score
-from torch import optim
-from torch.nn import CrossEntropyLoss
-from torch.nn.utils import clip_grad_norm_
 
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
@@ -41,9 +40,7 @@ class SemEvalModel(RelationExtractor):
         self.config = config
         self.data_loader = SemEvalDataloader(self.config)
         logger.info(
-            "Loaded {0} fine-tuning samples.".format(
-                self.data_loader.train_len
-            )
+            f"Loaded {len(self.data_loader.train_generator)} fine-tuning samples."
         )
 
         self.tokenizer = self.data_loader.tokenizer
@@ -57,38 +54,18 @@ class SemEvalModel(RelationExtractor):
             task="classification",
             n_classes=self.data_loader.n_classes,
         )
-        logger.info("Freezing hidden layers")
-        unfrozen_layers = {
-            "pooler",
-            "encoder.layer.11",
-            "classification_layer",
-        }
-        for name, param in self.model.named_parameters():
-            if any(layer in name for layer in unfrozen_layers):
-                param.requires_grad = True
-            else:
-                param.requires_grad = False
         self.model.resize_token_embeddings(len(self.tokenizer))
         pretrained_mtb_model = self.config.get("pretrained_mtb_model", None)
         if pretrained_mtb_model and os.path.isfile(pretrained_mtb_model):
             self._load_pretrained_model(pretrained_mtb_model)
 
-        # self.train_on_gpu = torch.cuda.is_available()
-        self.train_on_gpu = False
+        self.train_on_gpu = torch.cuda.is_available() and config.get(
+            "use_gpu", True
+        )
         if self.train_on_gpu:
             self.model.cuda()
 
-        self.criterion = CrossEntropyLoss(ignore_index=-1)
-
-        self.optimizer = optim.Adam(
-            [{"params": self.model.parameters(), "lr": self.config.get("lr")}]
-        )
-
-        self.scheduler = optim.lr_scheduler.MultiStepLR(
-            self.optimizer,
-            milestones=[2, 4, 6, 8, 12, 15, 18, 20, 22, 24, 26, 30],
-            gamma=0.8,
-        )
+        self.criterion = CrossEntropyLoss(reduction="sum")
 
         self._start_epoch = 0
         self._train_loss = []
@@ -100,6 +77,8 @@ class SemEvalModel(RelationExtractor):
             "models", "finetuning", "sem_eval", self.transformer
         )
         valncreate_dir(self.checkpoint_dir)
+
+        self._points_seen = 0
 
     def _load_pretrained_model(self, pretrained_mtb_model):
         logger.info(
@@ -116,15 +95,51 @@ class SemEvalModel(RelationExtractor):
         }
         model_dict.update(pretrained_dict)
         self.model.load_state_dict(pretrained_dict, strict=False)
+        self.tokenizer = checkpoint["tokenizer"]
 
-    def train(self):
+    def train(self, epochs):
         """
         Runs the training.
         """
-        pretrained_model = self.config.get(
-            "pretrained_mtb_model", "no_pretrainig"
+        pretrained_model = self.config.get("pretrained_mtb_model", None)
+        pretrained_model = (
+            "pretrained" if pretrained_model else "no_pretraining"
         )
-        results_path = os.path.join("results", "sem_eval", pretrained_model)
+        no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p
+                    for n, p in self.model.named_parameters()
+                    if not any(nd in n for nd in no_decay)
+                ],
+                "weight_decay": 0.01,
+            },
+            {
+                "params": [
+                    p
+                    for n, p in self.model.named_parameters()
+                    if any(nd in n for nd in no_decay)
+                ],
+                "weight_decay": 0.0,
+            },
+        ]
+        optimizer = AdamW(
+            optimizer_grouped_parameters, lr=self.config.get("lr")
+        )
+        ovr_steps = (
+            epochs
+            * len(self.data_loader.train_generator)
+            * self.config.get("mini_batch_size")
+            / self.config.get("batch_size")
+        )
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer, ovr_steps // 10, ovr_steps
+        )
+
+        results_path = os.path.join(
+            "results", "sem_eval", pretrained_model, str(epochs)
+        )
         best_model_path = os.path.join(
             self.checkpoint_dir, "best_model.pth.tar"
         )
@@ -141,43 +156,32 @@ class SemEvalModel(RelationExtractor):
 
         logger.info("Starting training process")
         pad_id = self.tokenizer.pad_token_id
-        update_size = len(self.data_loader.train_loader) // 10
-        for epoch in range(self._start_epoch, self.config.get("epochs")):
-            self._train_epoch(epoch, pad_id, update_size)
+        for epoch in range(self._start_epoch, epochs):
+            self._train_epoch(epoch, pad_id, optimizer, scheduler)
             data = self._write_kpis(results_path)
             self._plot_results(data, results_path)
 
         logger.info("Finished Training.")
         return self.model
 
-    def _train_epoch(self, epoch, pad_id, update_size):
+    def _train_epoch(self, epoch, pad_id, optimizer, scheduler):
         start_time = super()._train_epoch(epoch)
 
         train_loss, train_acc = [], []
 
-        for i, data in enumerate(self.data_loader.train_loader):
-            x, e1_e2_start, labels, _, _, _ = data
+        for i, data in enumerate(tqdm(self.data_loader.train_generator)):
+            x, e1_e2_start, labels = data
             classification_logits, labels, loss = self._train_on_batch(
-                e1_e2_start, labels, pad_id, x
+                e1_e2_start, labels, pad_id, x, optimizer, scheduler
             )
 
-            train_loss.append(loss.item())
+            train_loss.append(loss)
             train_acc.append(
-                SemEvalModel.evaluate_inner(
-                    classification_logits, labels, ignore_idx=-1
-                )[0]
+                SemEvalModel.evaluate_inner(classification_logits, labels)[0]
             )
 
-            if (i % update_size) == (update_size - 1):
-                logger.info(
-                    f"{(i + 1) * self.config.get('batch_size')}/"
-                    + f"{self.data_loader.train_len}: - "
-                    + f"Train Loss: {np.mean(train_loss)}, "
-                    + f"Train Accuracy: {np.mean(train_acc)}"
-                )
-
-        self._train_loss.append(np.mean(np.mean(train_loss)))
-        self._train_acc.append(np.mean(np.mean(train_acc)))
+        self._train_loss.append(np.mean(train_loss))
+        self._train_acc.append(np.mean(train_acc))
 
         self.on_epoch_end(epoch, self._test_f1, self._best_test_f1)
 
@@ -203,16 +207,18 @@ class SemEvalModel(RelationExtractor):
             benchmark: List of benchmark results
             baseline: Current baseline. Best model performance so far
         """
-        new_baseline, eval_result = super().on_epoch_end(
-            epoch, benchmark, baseline
-        )
+        eval_result = self.evaluate()
         self._best_test_f1 = (
-            new_baseline if new_baseline else self._best_test_f1
+            eval_result.get("f1")
+            if eval_result.get("f1") > self._best_test_f1
+            else self._best_test_f1
         )
         self._test_f1.append(eval_result["f1"])
         self._test_acc.append(eval_result["accuracy"])
 
-    def _train_on_batch(self, e1_e2_start, labels, pad_id, x):
+    def _train_on_batch(
+        self, e1_e2_start, labels, pad_id, x, optimizer, scheduler
+    ):
         attention_mask = (x != pad_id).float()
         token_type_ids = torch.zeros((x.shape[0], x.shape[1])).long()
         if self.train_on_gpu:
@@ -227,11 +233,16 @@ class SemEvalModel(RelationExtractor):
             e1_e2_start=e1_e2_start,
         )
         loss = self.criterion(classification_logits, labels.squeeze(1))
+        loss_p = loss.item()
+        loss = loss / self.config.get("batch_size")
         loss.backward()
-        clip_grad_norm_(self.model.parameters(), self.config.get("max_norm"))
-        self.optimizer.step()
-        self.optimizer.zero_grad()
-        return classification_logits, labels, loss
+        self._points_seen += len(x)
+        if self._points_seen >= self.config.get("batch_size"):
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad()
+            self._points_seen = 0
+        return classification_logits, labels, loss_p / len(x)
 
     def _plot_results(self, data, save_at):
         fig, ax = plt.subplots(figsize=(20, 20))
@@ -307,33 +318,22 @@ class SemEvalModel(RelationExtractor):
         )
 
     @classmethod
-    def evaluate_inner(cls, output, labels, ignore_idx):
-        idxs = (labels != ignore_idx).squeeze()
-        o_labels = torch.softmax(output, dim=1).max(1)[1]
-        l = labels.squeeze()[idxs]
-        o = o_labels[idxs]
-
-        if len(idxs) > 1:
-            acc = (l == o).sum().item() / len(idxs)
-        else:
-            acc = (l == o).sum().item()
-        l = l.cpu().numpy().tolist() if l.is_cuda else l.numpy().tolist()
-        o = o.cpu().numpy().tolist() if o.is_cuda else o.numpy().tolist()
-
-        return acc, (o, l)
+    def evaluate_inner(cls, output, labels):
+        l = labels.squeeze()
+        o = output.max(1)[1]
+        return (l == o).float().mean().item(), (o, l)
 
     def evaluate(self):
         logger.info("Evaluating test samples")
-        acc = 0
         out_labels = []
         true_labels = []
         self.model.eval()
         with torch.no_grad():
             for i, data in tqdm(
-                enumerate(self.data_loader.test_loader),
-                total=len(self.data_loader.test_loader),
+                enumerate(self.data_loader.test_generator),
+                total=len(self.data_loader.test_generator),
             ):
-                x, e1_e2_start, labels, _, _, _ = data
+                x, e1_e2_start, labels = data
                 attention_mask = (x != self.tokenizer.pad_token_id).float()
                 token_type_ids = torch.zeros((x.shape[0], x.shape[1])).long()
 
@@ -350,19 +350,22 @@ class SemEvalModel(RelationExtractor):
                     e1_e2_start=e1_e2_start,
                 )
 
-                accuracy, (o, l) = SemEvalModel.evaluate_inner(
-                    classification_logits, labels, ignore_idx=-1
+                _acc, (o, l) = SemEvalModel.evaluate_inner(
+                    classification_logits, labels
                 )
-                out_labels.append([str(i) for i in o])
-                true_labels.append([str(i) for i in l])
-                acc += accuracy
+                out_labels.extend([int(i) for i in o])
+                true_labels.extend([int(i) for i in l])
 
-        accuracy = acc / (i + 1)
+        out_labels = np.array(out_labels)
+        true_labels = np.array(true_labels)
+        accuracy = np.mean([o == t for t, o in zip(out_labels, true_labels)])
         results = {
             "accuracy": accuracy,
-            "precision": precision_score(true_labels, out_labels),
-            "recall": recall_score(true_labels, out_labels),
-            "f1": f1_score(true_labels, out_labels),
+            "precision": precision_score(
+                true_labels, out_labels, average="micro"
+            ),
+            "recall": recall_score(true_labels, out_labels, average="micro"),
+            "f1": f1_score(true_labels, out_labels, average="micro"),
         }
         logger.info("***** Eval results *****")
         for key in sorted(results.keys()):
@@ -381,8 +384,6 @@ class SemEvalModel(RelationExtractor):
             {
                 "epoch": epoch + 1,
                 "state_dict": self.model.state_dict(),
-                "optimizer": self.optimizer.state_dict(),
-                "scheduler": self.scheduler.state_dict(),
                 "best_f1": self._best_test_f1,
                 "losses_per_epoch": self._train_loss,
                 "accuracy_per_epoch": self._train_acc,
