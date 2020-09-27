@@ -20,37 +20,37 @@ class MTBGenerator(Dataset):
         Data Generator for Matching the blanks models.
 
         Args:
-            data: Dataset containing information about the relations and the position of the entities and the dataset
+            data: Dataset containing information about the relations and the
+                position of the entities and the dataset.
             tokenizer: Huggingface transformers tokenizer to use
-            dataset: Dataset type of the generator. May be train, validation or test
-            max_size: Maximum size of the batch
+            dataset: Dataset type of the generator. May be train, validation or
+                test,
+            max_size: Maximum size of the batch.
         """
 
-        self.entities_pools = data["entities_pools"]
+        self.entities_pools = [
+            ep for ep in data["entities_pools"] if ep["set"] == dataset
+        ]
         self.tokenized_relations = data["tokenized_relations"]
-        self.len_data = len(self.tokenized_relations)
+        self.n_relations = len(self.tokenized_relations)
         self.all_relation_ids = self.tokenized_relations[
             "relation_id"
-        ].values.tolist()
-        self.entities_pools = [
-            ep for ep in self.entities_pools if ep["set"] == dataset
-        ]
+        ].to_list()
         self.e1_pool = data["e1_pool"]
         self.e2_pool = data["e2_pool"]
 
-        self.tokenizer = tokenizer
+        self.cls_idx = tokenizer.cls_token_id
+        self.sep_idx = tokenizer.sep_token_id
+        self.pad_token_id = tokenizer.pad_token_id
+        self.mask_idx = tokenizer.mask_token_id
 
-        self.blank_idx = self.tokenizer.convert_tokens_to_ids("[BLANK]")
-        self.mask_idx = self.tokenizer.mask_token_id
+        self.blank_idx = tokenizer.convert_tokens_to_ids("[BLANK]")
 
-        self.e1_idx = self.tokenizer.convert_tokens_to_ids("[E1]")
-        self.e1e_idx = self.tokenizer.convert_tokens_to_ids("[/E1]")
+        self.e1_idx = tokenizer.convert_tokens_to_ids("[E1]")
+        self.e1e_idx = tokenizer.convert_tokens_to_ids("[/E1]")
 
-        self.e2_idx = self.tokenizer.convert_tokens_to_ids("[E2]")
-        self.e2e_idx = self.tokenizer.convert_tokens_to_ids("[/E2]")
-
-        self.cls_idx = self.tokenizer.cls_token_id
-        self.sep_idx = self.tokenizer.sep_token_id
+        self.e2_idx = tokenizer.convert_tokens_to_ids("[E2]")
+        self.e2e_idx = tokenizer.convert_tokens_to_ids("[/E2]")
 
         self.max_size = max_size
 
@@ -68,8 +68,7 @@ class MTBGenerator(Dataset):
     def _put_blanks(self, data):
         alpha = 0.7
         r, e1, e2 = data
-        blank_e1 = np.random.uniform()
-        blank_e2 = np.random.uniform()
+        blank_e1, blank_e2 = np.random.uniform(0, 1, 2)
         r0, r1, r2 = r
         r0 = np.array(r0)
         if blank_e1 < alpha:
@@ -129,27 +128,48 @@ class MTBGenerator(Dataset):
     def __getitem__(self, pool_id):
         pool = self.entities_pools[pool_id]
         positives = list(pool["relation_ids"])
-        e1 = pool["e1"]
-        e2 = pool["e2"]
-
-        e1_represent = set(self.e1_pool[e1])
-        e2_represent = set(self.e2_pool[e2])
-
-        e1_negatives = e1_represent.difference(e2_represent)
-        e2_negatives = e2_represent.difference(e1_represent)
-
         n_positives = (
             min(self.max_size, len(positives))
             if self.max_size
             else len(positives)
         )
         pos_idxs = random.sample(positives, n_positives)
+        pos_df = self.tokenized_relations.iloc[pos_idxs]
 
+        neg_idxs = self._sample_negative_indices(pool, pos_idxs)
+        neg_df = self.tokenized_relations.loc[neg_idxs]
+
+        batch = []
+        batch = self._fill_batch_from_data(batch, pos_df, True)
+        batch = self._fill_batch_from_data(batch, neg_df, False)
+
+        return self._wrap_batch(batch)
+
+    def _fill_batch_from_data(self, batch, data, positive: bool):
+        for _idx, row in data.iterrows():
+            e1_e2_start, masked_for_pred, x = self._preprocess(row)
+            batch.append(
+                (
+                    x,
+                    masked_for_pred,
+                    e1_e2_start,
+                    torch.LongTensor([int(positive)]),
+                )
+            )
+        return batch
+
+    def _sample_negative_indices(self, pool, pos_idxs):
+        e1 = pool["e1"]
+        e2 = pool["e2"]
+        e1_represent = set(self.e1_pool[e1])
+        e2_represent = set(self.e2_pool[e2])
+        e1_negatives = e1_represent.difference(e2_represent)
+        e2_negatives = e2_represent.difference(e1_represent)
         neg_idxs = None
-        if np.random.uniform() > 0.5:  # Sample hard negatives
-            if np.random.uniform() > 0.5:  # e2 negatives
+        if np.random.uniform() > 0.5:
+            if np.random.uniform() > 0.5:
                 negatives = e1_negatives
-            else:  # e1 negatives
+            else:
                 negatives = e2_negatives
             n_negatives = (
                 min(self.max_size, len(negatives))
@@ -157,67 +177,37 @@ class MTBGenerator(Dataset):
                 else len(negatives)
             )
             neg_idxs = random.sample(negatives, n_negatives)
-
         if not neg_idxs:
-            n_negatives = min(self.max_size, self.len_data)
+            n_negatives = min(self.max_size, self.n_relations)
             neg_idx = [
-                int(self.len_data * random.random())
+                int(self.n_relations * random.random())
                 for _ in range(n_negatives)
             ]
             neg_idxs = [self.all_relation_ids[p] for p in neg_idx]
             while any(n in pos_idxs for n in neg_idxs):
                 neg_idx = [
-                    int(self.len_data * random.random())
+                    int(self.n_relations * random.random())
                     for _ in range(n_negatives)
                 ]
                 neg_idxs = [self.all_relation_ids[p] for p in neg_idx]
-
-        batch = []
-
-        # process positive sample
-        pos_df = self.tokenized_relations.iloc[pos_idxs]
-        for _pos_idx, pos_row in pos_df.iterrows():
-            e1_e2_start, masked_for_pred, x = self._preprocess(pos_row)
-            batch.append(
-                (x, masked_for_pred, e1_e2_start, torch.LongTensor([1]))
-            )
-
-        # process negative samples
-        negs_df = self.tokenized_relations.loc[neg_idxs]
-        for _neg_idx, neg_row in negs_df.iterrows():
-            e1_e2_start, masked_for_pred, x = self._preprocess(neg_row)
-            batch.append(
-                (x, masked_for_pred, e1_e2_start, torch.LongTensor([0]))
-            )
-
-        return self._wrap_batch(batch)
+        return neg_idxs
 
     def _wrap_batch(self, batch):
-        sorted_batch = sorted(batch, key=lambda x: x[0].shape[0], reverse=True)
-        sequences = [x[0] for x in sorted_batch]
+        sequences = [x[0] for x in batch]
         sequences = pad_sequence(
             sequences,
             batch_first=True,
-            padding_value=self.tokenizer.pad_token_id,
+            padding_value=self.pad_token_id,
         )
-        mask_for_pred = list(map(lambda x: x[1], sorted_batch))
+        mask_for_pred = list(map(lambda x: x[1], batch))
         mask_for_pred = pad_sequence(
             mask_for_pred,
             batch_first=True,
-            padding_value=self.tokenizer.pad_token_id,
+            padding_value=self.pad_token_id,
         )
-        e1_e2_start = list(map(lambda x: x[2], sorted_batch))
-        e1_e2_start = pad_sequence(
-            e1_e2_start, batch_first=True, padding_value=-1
-        )
-        labels = list(map(lambda x: x[3], sorted_batch))
-        labels = pad_sequence(labels, batch_first=True, padding_value=-1)
-        return (
-            sequences,
-            mask_for_pred,
-            e1_e2_start,
-            labels,
-        )
+        e1_e2_start = torch.stack(list(map(lambda x: x[2], batch)))
+        labels = torch.stack(list(map(lambda x: x[3], batch)))
+        return sequences, mask_for_pred, e1_e2_start, labels
 
     def _preprocess(self, row):
         r, e1, e2, relation_id = row

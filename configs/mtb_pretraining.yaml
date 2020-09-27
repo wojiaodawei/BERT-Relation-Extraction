@@ -12,7 +12,7 @@ normalization:
 min_pool_size: 8
 # Model
 transformer: bert-large-uncased
-# Trainingmanue
+# Training
 batch_size: 2048 # Training batch size
 max_size: 2
 epochs: 10 # Number of Epochs
