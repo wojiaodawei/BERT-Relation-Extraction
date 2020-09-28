@@ -85,9 +85,9 @@ class MTBPretrainDataLoader:
         Load the data defined in the configuration parameters.
         """
         data_path = self.config.get("data")
-        data_file = os.path.basename(data_path)
-        data_file_name = os.path.splitext(data_file)[0]
-        file_name = "_".join(
+        raw_data_file = os.path.basename(data_path)
+        data_file_name = os.path.splitext(raw_data_file)[0]
+        preprocessed_file_name = "_".join(
             [
                 data_file_name,
                 self.config.get("transformer"),
@@ -97,7 +97,7 @@ class MTBPretrainDataLoader:
         preprocessed_folder = os.path.join("data", self.experiment_name)
         valncreate_dir(preprocessed_folder)
         preprocessed_file = os.path.join(
-            preprocessed_folder, file_name + ".pkl"
+            preprocessed_folder, preprocessed_file_name + ".pkl"
         )
 
         if os.path.isfile(preprocessed_file):
@@ -140,12 +140,8 @@ class MTBPretrainDataLoader:
         )
 
         if data_exists:
-            with open(x_map_rev_path) as x_f:
-                x_map_rev = json.load(x_f)
-                x_map_rev = {int(k): v for k, v in x_map_rev.items()}
-            with open(e_map_rev_path) as e_f:
-                e_map_rev = json.load(e_f)
-                e_map_rev = {int(k): v for k, v in e_map_rev.items()}
+            x_map_rev = MTBPretrainDataLoader._load_and_rev_map(x_map_rev_path)
+            e_map_rev = MTBPretrainDataLoader._load_and_rev_map(e_map_rev_path)
             dataset = np.load(mapped_dataset_path)
         else:
             with open(data_path, "r", encoding="utf8") as f:
@@ -157,6 +153,13 @@ class MTBPretrainDataLoader:
             "Number of relation statements in corpus: {0}".format(len(dataset))
         )
         return dataset, x_map_rev, e_map_rev
+
+    @classmethod
+    def _load_and_rev_map(cls, path):
+        with open(path) as file_handler:
+            map_rev = json.load(file_handler)
+            map_rev = {int(k): v for k, v in map_rev.items()}
+        return map_rev
 
     @classmethod
     def _build_dataframe(cls, d, x_map, e_map):
@@ -201,10 +204,14 @@ class MTBPretrainDataLoader:
         """
         min_pool_size = self.config.get("min_pool_size")
         if min_pool_size > 2:
-            data, e_map_rev, x_map_rev = self.remove_underrepresented_pools(
+            (
+                data,
+                e_map_rev,
+                x_map_rev,
+            ) = MTBPretrainDataLoader.remove_underrepresented_pools(
                 data, e_map_rev, min_pool_size, x_map_rev
             )
-        data = self.remap_content(data, e_map_rev, x_map_rev)
+        data = MTBPretrainDataLoader.remap_content(data, e_map_rev, x_map_rev)
 
         logger.info("Add special tokens to relations, tokenize and pad")
         tokenized_relations = []
@@ -212,7 +219,7 @@ class MTBPretrainDataLoader:
         e_span2 = []
         to_idx = 0
         ld = len(data)
-        for idx, d in enumerate(tqdm(data)):
+        for _idx, d in enumerate(tqdm(data)):
             try:
                 relation = self._add_special_tokens(d)
                 relation = " ".join(relation)
@@ -256,7 +263,8 @@ class MTBPretrainDataLoader:
         }
         return preprocessed_data
 
-    def remap_content(self, data, e_map_rev, x_map_rev):
+    @classmethod
+    def remap_content(cls, data, e_map_rev, x_map_rev):
         """
         Remaps the content of the mapped dataset to the actual dataset.
 
@@ -274,8 +282,9 @@ class MTBPretrainDataLoader:
             data[idx] = d
         return data
 
+    @classmethod
     def remove_underrepresented_pools(
-        self, data, e_map_rev, min_pool_size, x_map_rev
+        cls, data, e_map_rev, min_pool_size, x_map_rev
     ):
         """
         Removes entity combinations which do not have enough representations.
@@ -335,14 +344,19 @@ class MTBPretrainDataLoader:
         Args:
             df: Dataframe to use to generate QQ pairs.
         """
-        pools, e1_pool, e2_pool = self.generate_entities_pools(df)
+        (
+            pools,
+            e1_pool,
+            e2_pool,
+        ) = MTBPretrainDataLoader.generate_entities_pools(df)
         for pool in pools:
             pool["set"] = (
                 "validation" if np.random.random() > 0.75 else "train"
             )
         return pools, e1_pool, e2_pool
 
-    def generate_entities_pools(self, data: pd.DataFrame):
+    @classmethod
+    def generate_entities_pools(cls, data: pd.DataFrame):
         """
         Generate class pools.
 
@@ -437,7 +451,7 @@ class MTBPretrainDataLoader:
             ee_product = list(itertools.product(ents, ents))
             for ee in ee_product:
                 data.append(
-                    self._resolve_entities(
+                    MTBPretrainDataLoader._resolve_entities(
                         ee, doc=doc, window_size=window_size
                     )
                 )
@@ -528,7 +542,8 @@ class MTBPretrainDataLoader:
 
         return data, x_map_rev, e_map_rev
 
-    def _resolve_entities(self, e, doc, window_size):
+    @classmethod
+    def _resolve_entities(cls, e, doc, window_size):
         e1, e2 = e
         if e1 == e2:
             return None
