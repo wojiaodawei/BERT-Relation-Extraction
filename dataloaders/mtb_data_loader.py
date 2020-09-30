@@ -435,15 +435,10 @@ class MTBPretrainDataLoader:
 
         for doc in tqdm(docs, total=n_docs):
             data = []
-            spans = list(doc.ents) + list(doc.noun_chunks)
-            spans = spacy.util.filter_spans(spans)
-            with doc.retokenize() as retokenizer:
-                for span in spans:
-                    retokenizer.merge(span)
-            doc_ents = doc.ents
+            doc_ents = MTBPretrainDataLoader._get_doc_entities(doc)
             ents_text = set()
             ents = []
-            for e in itertools.chain(spans, doc_ents):
+            for e in doc_ents:
                 if e.text not in ents_text:
                     ents.append(e)
                     ents_text.add(e.text)
@@ -469,22 +464,23 @@ class MTBPretrainDataLoader:
                 else:
                     k = x_map[x_join]
                     new_r = [k, d[1], d[2], d[3], d[4]]
-                if e1 not in e_map:
-                    e_map[e1] = e_idx
-                    e_map_rev[e_idx] = e1
-                    new_e1 = e_idx
-                    e_idx += 1
+                (
+                    e_idx,
+                    new_e1,
+                    e_map,
+                    e_map_rev,
+                ) = MTBPretrainDataLoader._increment_e_map(
+                    e1, e_idx, e_map, e_map_rev
+                )
 
-                else:
-                    new_e1 = e_map[e1]
-
-                if e2 not in e_map:
-                    e_map[e2] = e_idx
-                    e_map_rev[e_idx] = e2
-                    new_e2 = e_idx
-                    e_idx += 1
-                else:
-                    new_e2 = e_map[e2]
+                (
+                    e_idx,
+                    new_e2,
+                    e_map,
+                    e_map_rev,
+                ) = MTBPretrainDataLoader._increment_e_map(
+                    e2, e_idx, e_map, e_map_rev
+                )
                 tuple_key = str(new_e1) + "_" + str(new_e2)
                 if tuple_key not in ee_map_freq:
                     ee_map_freq[tuple_key] = 1
@@ -502,6 +498,28 @@ class MTBPretrainDataLoader:
         )
 
         return ovr_dataset, x_map_rev, e_map_rev
+
+    @classmethod
+    def _increment_e_map(cls, entity, e_idx, e_map, e_map_rev):
+        if entity not in e_map:
+            e_map[entity] = e_idx
+            e_map_rev[e_idx] = entity
+            new_e1 = e_idx
+            e_idx += 1
+
+        else:
+            new_e1 = e_map[entity]
+        return e_idx, new_e1, e_map, e_map_rev
+
+    @classmethod
+    def _get_doc_entities(cls, doc):
+        spans = list(doc.ents) + list(doc.noun_chunks)
+        spans = spacy.util.filter_spans(spans)
+        with doc.retokenize() as retokenizer:
+            for span in spans:
+                retokenizer.merge(span)
+        doc_ents = doc.ents
+        return list(itertools.chain(doc_ents, spans))
 
     @classmethod
     def _remove_low_freq_combs(
@@ -557,13 +575,11 @@ class MTBPretrainDataLoader:
             return None
         if 1 <= (e2start - e1end) <= window_size:
             length_doc = len(doc)
-            # Find start of sentence
             r_start = MTBPretrainDataLoader._find_sent_start(doc, e1start)
             r_end = MTBPretrainDataLoader._find_sent_end(
                 doc, e2end, length_doc
             )
 
-            # sentence should not be longer than window_size
             if (r_end - r_start) > window_size:
                 return None
 
