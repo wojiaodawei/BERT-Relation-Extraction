@@ -64,8 +64,4 @@ class SemEvalGenerator(Dataset):
         )
         labels = list(map(lambda x: x[2], batch))
         labels = pad_sequence(labels, batch_first=True, padding_value=-1)
-        return (
-            sequences,
-            e1_e2_start,
-            labels,
-        )
+        return sequences, e1_e2_start, labels
