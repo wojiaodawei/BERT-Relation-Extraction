@@ -188,3 +188,6 @@ results/*
 
 # ssh
 ssh/*
+/models
+/data
+/results
