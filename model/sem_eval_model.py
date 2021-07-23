@@ -5,9 +5,9 @@ import time
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from pathlib import Path
 import torch
 from matplotlib import pyplot as plt
-from ml_utils.path_operations import valncreate_dir
 from sklearn.metrics import f1_score, precision_score, recall_score
 from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
@@ -21,7 +21,7 @@ from model.relation_extractor import RelationExtractor
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
 )
-logger = logging.getLogger("__file__")
+logger = logging.getLogger(__name__)
 
 sns.set(font_scale=2.2)
 
@@ -76,7 +76,7 @@ class SemEvalModel(RelationExtractor):
         self.checkpoint_dir = os.path.join(
             "models", "finetuning", "sem_eval", self.transformer
         )
-        valncreate_dir(self.checkpoint_dir)
+        Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
         self._points_seen = 0
 
@@ -282,7 +282,7 @@ class SemEvalModel(RelationExtractor):
         plt.close(fig)
 
     def _write_kpis(self, results_path):
-        valncreate_dir(results_path)
+        Path(results_path).mkdir(parents=True, exist_ok=True)
         data = pd.DataFrame(
             {
                 "Epoch": np.arange(len(self._train_loss)),

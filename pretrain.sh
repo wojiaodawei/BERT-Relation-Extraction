@@ -6,7 +6,7 @@ apt-get update -qq
 apt-get install openssh-client -qq
 
 ssh -o StrictHostKeyChecking=no git@github.com
-ssh-agent sh -c 'ssh-add ssh/id_rsa_ml_utils; pip install -r sm_requirements.txt'
+pip install -r sm_requirements.txt
 
 python -m spacy download en_core_web_lg
 python -W ignore pretrain.py --config_file ${SM_HP_CONFIG_FILE}

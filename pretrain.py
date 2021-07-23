@@ -1,15 +1,16 @@
 import sys
 import warnings
 
-from ml_utils.config_parser import ConfigParser
-from ml_utils.console_args import args
-
 from model.mtb_model import MTBModel
 
-config = ConfigParser(
-    args.config_file, console_args=dict(args._get_kwargs())
-).parse()
+import argparse
 
+parser = argparse.ArgumentParser(description="Model Parameters")
+parser.add_argument("--config_file", help="Path to the config file.")
+args = parser.parse_args()
+
+with open(args.config_file, "r") as stream:
+    config = yaml.load(stream, Loader=yaml.FullLoader)  # noqa: 701
 
 if not sys.warnoptions:
     warnings.simplefilter("ignore")

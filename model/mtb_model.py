@@ -7,7 +7,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 from matplotlib import pyplot as plt
-from ml_utils.path_operations import valncreate_dir
+from pathlib import Path
 from torch import nn
 from tqdm import tqdm
 from transformers.optimization import AdamW, get_linear_schedule_with_warmup
@@ -102,7 +102,7 @@ class MTBModel(RelationExtractor):
         self.checkpoint_dir = os.path.join(
             "models", "MTB-pretraining", self.experiment_name, self.transformer
         )
-        valncreate_dir(self.checkpoint_dir)
+        Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
         self._batch_points_seen = 0
         self._points_seen = 0
@@ -203,7 +203,7 @@ class MTBModel(RelationExtractor):
         plt.close(fig)
 
     def _write_kpis(self, results_path):
-        valncreate_dir(results_path)
+        Path(results_path).mkdir(parents=True, exist_ok=True)
         data = pd.DataFrame(
             {
                 "Epoch": np.arange(len(self._train_loss)),
