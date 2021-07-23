@@ -2,13 +2,12 @@ import itertools
 import json
 import os
 import re
-
+from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
 import spacy
-from ml_utils.normalizer import Normalizer
-from ml_utils.path_operations import valncreate_dir
+from helpers import Normalizer
 from tqdm import tqdm
 from transformers import BertTokenizer
 
@@ -95,7 +94,7 @@ class MTBPretrainDataLoader:
             ]
         )
         preprocessed_folder = os.path.join("data", self.experiment_name)
-        valncreate_dir(preprocessed_folder)
+        Path(preprocessed_folder).mkdir(parents=True, exist_ok=True)
         preprocessed_file = os.path.join(
             preprocessed_folder, preprocessed_file_name + ".pkl"
         )
@@ -110,8 +109,9 @@ class MTBPretrainDataLoader:
             dataset, x_map_rev, e_map_rev = self.build_dataset(
                 data_path, preprocessed_file
             )
-
-            valncreate_dir(os.path.join("data", self.experiment_name))
+            Path(os.path.join("data", self.experiment_name)).mkdir(
+                parents=True, exist_ok=True
+            )
             dataset = self.preprocess(dataset, x_map_rev, e_map_rev)
             with open(preprocessed_file, "wb") as fully_preprocessed_path:
                 joblib.dump(dataset, fully_preprocessed_path)

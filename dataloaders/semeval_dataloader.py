@@ -4,7 +4,7 @@ import re
 
 import joblib
 import pandas as pd
-from ml_utils.normalizer import Normalizer
+from helpers import Normalizer
 from tqdm import tqdm
 from transformers import AlbertTokenizer, BertTokenizer
 
@@ -14,7 +14,7 @@ from logger import LOG_DATETIME_FORMAT, LOG_FORMAT, LOG_LEVEL
 logging.basicConfig(
     format=LOG_FORMAT, datefmt=LOG_DATETIME_FORMAT, level=LOG_LEVEL
 )
-logger = logging.getLogger("__file__")
+logger = logging.getLogger(__name__)
 
 
 class SemEvalDataloader:

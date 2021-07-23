@@ -1,6 +1,4 @@
-from ml_utils.config_parser import ConfigParser
-from ml_utils.console_args import args
-from ml_utils.path_operations import strip_to_tmp
+import argparse
 
 import sagemaker
 from logger import logger
@@ -8,9 +6,12 @@ from sagemaker.pytorch import PyTorch
 
 sagemaker_session = sagemaker.Session()
 
-config = ConfigParser(
-    args.config_file, console_args=dict(args._get_kwargs())
-).parse()
+parser = argparse.ArgumentParser(description="Model Parameters")
+parser.add_argument("--config_file", help="Path to the config file.")
+args = parser.parse_args()
+
+with open(args.config_file, "r") as stream:
+    config = yaml.load(stream, Loader=yaml.FullLoader)  # noqa: 701
 
 MAX_TRAIN_TIME = 5 * 24 * 3600
 
@@ -37,20 +38,11 @@ if __name__ == "__main__":
         },
     ]
     logger.info("Strip dir")
-    source_dir = strip_to_tmp(
-        exclude=[
-            "./requirements.txt",
-            "./data/cnn_dm.txt",
-            "./data/cnn.txt",
-            "./data/cnn-small.txt",
-        ],
-        file_ext=[".py", ".yaml", ".yml", ".sh", ".txt", ".sql"],
-    )
 
     estimator = PyTorch(
         entry_point="pretrain.sh",
         hyperparameters=hyperparameters,
-        source_dir=source_dir,
+        source_dir=".",
         instance_type=config.get("aws_train_instance_type", "local"),
         instance_count=1,
         dependencies=["ssh"],
